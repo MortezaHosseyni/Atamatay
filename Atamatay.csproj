@@ -12,6 +12,9 @@
     <PackageReference Include="Discord.Net.Commands" Version="3.16.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Y2Sharp" Version="4.10.0" />
   </ItemGroup>
 
 </Project>
