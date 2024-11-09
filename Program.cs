@@ -5,6 +5,7 @@ using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Atamatay
 {
@@ -14,7 +15,18 @@ namespace Atamatay
         private CommandService _commands = null!;
         private IServiceProvider _services = null!;
 
-        private static async Task Main() => await new Program().RunBotAsync();
+        private static async Task Main(string[] args)
+        {
+            await new Program().RunBotAsync();
+            await CreateHostBuilder(args).Build().RunAsync();
+        }
+
+        public static IHostBuilder CreateHostBuilder(string[] args) =>
+            Host.CreateDefaultBuilder(args)
+                .ConfigureServices((hostContext, services) =>
+                {
+                    services.AddHostedService<FolderCleanerService>();
+                });
 
         public async Task RunBotAsync()
         {
