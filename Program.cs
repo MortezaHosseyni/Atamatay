@@ -1,4 +1,5 @@
 ﻿using Atamatay.Handlers;
+using Atamatay.Services;
 using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
@@ -28,6 +29,7 @@ namespace Atamatay
                 .AddSingleton(_client)
                 .AddSingleton(_commands)
                 .AddSingleton<CommandHandler>()
+                .AddSingleton<IMusicService, MusicService>()
                 .BuildServiceProvider();
 
             _client.Log += LogAsync;
