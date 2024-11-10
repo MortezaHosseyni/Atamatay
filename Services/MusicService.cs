@@ -2,7 +2,6 @@
 using Discord;
 using Discord.Audio;
 using Discord.Commands;
-using Discord.WebSocket;
 using System.Diagnostics;
 using Atamatay.Models;
 using YoutubeExplode;
@@ -14,7 +13,6 @@ namespace Atamatay.Services
     public interface IMusicService
     {
         Task JoinAsync(SocketCommandContext context);
-        Task LeaveAsync(SocketCommandContext context);
         Task PlayAsync(SocketCommandContext context);
         Task NextAsync(SocketCommandContext context);
         bool GetPlayerStatus();
@@ -41,19 +39,6 @@ namespace Atamatay.Services
             }
 
             await voiceChannel.ConnectAsync(true, false, false, false);
-        }
-
-        public async Task LeaveAsync(SocketCommandContext context)
-        {
-            var voiceChannel = (context.User as IGuildUser)?.VoiceChannel;
-            if (voiceChannel == null)
-            {
-                await context.Channel.SendMessageAsync("I'm not connected to any voice channel.");
-                return;
-            }
-
-            await voiceChannel.DisconnectAsync();
-            await context.Channel.SendMessageAsync($"Left {voiceChannel.Name}.");
         }
 
         public async Task PlayAsync(SocketCommandContext context)
@@ -94,6 +79,7 @@ namespace Atamatay.Services
                     finally
                     {
                         await discord.FlushAsync();
+                        DeleteSong(song.Name);
                         IsPlaying = false;
                     }
 
@@ -186,7 +172,7 @@ namespace Atamatay.Services
             }
         }
 
-        public async Task StopAsync(SocketCommandContext context)
+        public async Task StopAsync(SocketCommandContext context) // TODO: Delete song after stop.
         {
             _playList.Clear();
             IsPlaying = false;
@@ -215,6 +201,13 @@ namespace Atamatay.Services
         private static async Task<Video> GetYoutubeVideoInfo(YoutubeClient youtube, string query)
         {
             return await youtube.Videos.GetAsync(query);
+        }
+
+        private static void DeleteSong(string songName)
+        {
+            var path = $"songs/{songName}";
+            if (File.Exists(path))
+                File.Delete(path);
         }
         #endregion
     }

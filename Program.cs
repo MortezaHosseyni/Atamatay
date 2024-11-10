@@ -14,19 +14,7 @@ namespace Atamatay
         private DiscordSocketClient _client = null!;
         private CommandService _commands = null!;
         private IServiceProvider _services = null!;
-
-        private static async Task Main(string[] args)
-        {
-            await new Program().RunBotAsync();
-            await CreateHostBuilder(args).Build().RunAsync();
-        }
-
-        public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
-                .ConfigureServices((hostContext, services) =>
-                {
-                    services.AddHostedService<FolderCleanerService>();
-                });
+        private static async Task Main() => await new Program().RunBotAsync();
 
         public async Task RunBotAsync()
         {

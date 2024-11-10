@@ -13,12 +13,6 @@ namespace Atamatay.Modules
             await _music.JoinAsync(Context);
         }
 
-        [Command("leave", RunMode = RunMode.Async)]
-        public async Task LeaveAsync()
-        {
-            await _music.LeaveAsync(Context);
-        }
-
         [Command("play", RunMode = RunMode.Async)]
         public async Task PlayAsync([Remainder] string query)
         {
