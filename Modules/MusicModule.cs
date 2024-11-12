@@ -7,18 +7,12 @@ namespace Atamatay.Modules
     {
         private readonly IMusicService _music = music;
 
-        [Command("join", RunMode = RunMode.Async)]
-        public async Task JoinAsync()
-        {
-            await _music.JoinAsync(Context);
-        }
-
         [Command("play", RunMode = RunMode.Async)]
         public async Task PlayAsync([Remainder] string query)
         {
-            var isPlaying = _music.GetPlayerStatus();
-
             await _music.AddPlaylistAsync(Context, query);
+
+            var isPlaying = await _music.GetPlayerStatus(Context);
 
             if (!isPlaying)
             {
