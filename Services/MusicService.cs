@@ -46,13 +46,7 @@ namespace Atamatay.Services
                     return;
                 }
 
-                if (playList.AudioClient == null || playList.AudioClient.ConnectionState == ConnectionState.Disconnected)
-                    playList.AudioClient = await channel.ConnectAsync();
-                else
-                {
-                    await context.Channel.SendMessageAsync("\ud83d\udc3a Please join to my voice channel.");
-                    return;
-                }
+                playList.AudioClient = await channel.ConnectAsync();
 
                 while (!playList.SkipRequested && playList.Songs.TryDequeue(out var song))
                 {
