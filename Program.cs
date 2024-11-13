@@ -33,6 +33,8 @@ namespace Atamatay
 
             _client.Log += LogAsync;
 
+            await _client.SetActivityAsync(new Game("Use $help for commands", ActivityType.Listening));
+
             #region Config
             var config = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
@@ -47,8 +49,6 @@ namespace Atamatay
             var commandHandler = _services.GetRequiredService<CommandHandler>();
             await commandHandler.InitializeAsync();
 
-            _client.MessageReceived += MessageReceivedAsync;
-
             await Task.Delay(-1);
         }
 
@@ -56,16 +56,6 @@ namespace Atamatay
         {
             Console.WriteLine(log);
             return Task.CompletedTask;
-        }
-
-        private static async Task MessageReceivedAsync(SocketMessage message)
-        {
-            if (message.Author.IsBot) return;
-
-            if (message.Content.ToLower() == "hello")
-            {
-                await message.Channel.SendMessageAsync($"Hi {message.Author.Username}!");
-            }
         }
     }
 }
