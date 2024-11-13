@@ -11,6 +11,7 @@ namespace Atamatay.Models
         public ConcurrentQueue<SongModel>? Songs { get; set; }
 
         public bool IsPlaying { get; set; }
+        public bool StopRequested { get; set; }
         public bool SkipRequested { get; set; }
 
         public DateTime CreatedAt { get; set; }
