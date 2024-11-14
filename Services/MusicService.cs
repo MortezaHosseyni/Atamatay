@@ -31,7 +31,7 @@ namespace Atamatay.Services
             try
             {
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
-                if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 User must be in a voice channel."); return; }
+                if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
 
                 var playList = Playlists.FirstOrDefault(p => p.ChannelId == channel.Id);
 
@@ -106,7 +106,7 @@ namespace Atamatay.Services
         public async Task NextAsync(SocketCommandContext context)
         {
             var channel = (context.User as IGuildUser)?.VoiceChannel;
-            if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 User must be in a voice channel."); return; }
+            if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
 
             var playList = Playlists?.Where(p => p.ChannelId == channel.Id).FirstOrDefault();
             if (playList?.Songs == null || playList.Songs.IsEmpty || playList.AudioClient == null)
@@ -134,14 +134,13 @@ namespace Atamatay.Services
         public async Task<bool> GetPlayerStatus(SocketCommandContext context)
         {
             var channel = (context.User as IGuildUser)?.VoiceChannel;
-            if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 User must be in a voice channel."); return false; }
+            if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return false; }
 
             var playList = Playlists.FirstOrDefault(p => p.IsPlaying);
             if (playList == null || channel.Id == playList.ChannelId)
                 return playList is { Songs: { IsEmpty: false }, AudioClient: not null, IsPlaying: true };
             await context.Channel.SendMessageAsync("\ud83d\udc3a Please join to my channel.");
             return true;
-
         }
 
         public async Task AddPlaylistAsync(SocketCommandContext context, string query)
@@ -149,7 +148,7 @@ namespace Atamatay.Services
             try
             {
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
-                if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 User must be in a voice channel."); return; }
+                if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
 
                 var playList = Playlists.FirstOrDefault(p => p.ChannelId == channel.Id);
 
@@ -188,29 +187,63 @@ namespace Atamatay.Services
 
                     var spotify = new SpotifyClient(spotifyConfig.WithToken(response.AccessToken));
 
-                    var match = Regex.Match(query, @"open\.spotify\.com/track/(?<trackId>[a-zA-Z0-9]+)");
-                    var trackId = match.Success ? match.Groups["trackId"].Value : null;
-
-                    if (string.IsNullOrEmpty(trackId))
+                    if (query.Contains("/playlist/"))
                     {
-                        await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
-                        return;
+                        var match = Regex.Match(query, @"open\.spotify\.com/playlist/(?<playlistId>[a-zA-Z0-9]+)");
+                        var playlistId = match.Success ? match.Groups["playlistId"].Value : null;
+
+                        if (string.IsNullOrEmpty(playlistId))
+                        {
+                            await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
+                            return;
+                        }
+
+                        var spotifyPlaylist = await spotify.Playlists.Get(playlistId);
+
+                        if (spotifyPlaylist.Tracks is { Total: > 0 })
+                        {
+                            await foreach (var track in spotify.Paginate(spotifyPlaylist.Tracks).Take(10))
+                            {
+                                if (track.Track is not FullTrack fullTrack) continue;
+                                var searchSong = await SearchSong(context, $"{fullTrack.Name} by {fullTrack.Artists[0].Name}");
+                                var song = await DownloadFromYoutube(context, searchSong, channel.Id);
+
+                                playList.Songs.Enqueue(song);
+                            }
+                            await context.Channel.SendMessageAsync($"\ud83d\udc3a Add Spotify playlist:\n\ud83c\udfb5 {spotifyPlaylist.Name}\n\ud83c\udfa4 {spotifyPlaylist.Owner}\n {spotifyPlaylist.Tracks.Total} song added to playlist.");
+                        }
                     }
-
-                    var track = await spotify.Tracks.Get(trackId);
-
-                    var searchSong = await SearchSong(context, $"{track.Name} by {track.Artists[0].Name}");
-
-                    if (!string.IsNullOrEmpty(searchSong) && IsValidUrl(searchSong))
+                    else if (query.Contains("/track/"))
                     {
-                        var song = await DownloadFromYoutube(context, searchSong, channel.Id);
+                        var match = Regex.Match(query, @"open\.spotify\.com/track/(?<trackId>[a-zA-Z0-9]+)");
+                        var trackId = match.Success ? match.Groups["trackId"].Value : null;
 
-                        playList.Songs.Enqueue(song);
-                        await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83d\udc68\u200d\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
+                        if (string.IsNullOrEmpty(trackId))
+                        {
+                            await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
+                            return;
+                        }
+
+                        var track = await spotify.Tracks.Get(trackId);
+
+                        var searchSong = await SearchSong(context, $"{track.Name} by {track.Artists[0].Name}");
+
+                        if (!string.IsNullOrEmpty(searchSong) && IsValidUrl(searchSong))
+                        {
+                            var song = await DownloadFromYoutube(context, searchSong, channel.Id);
+
+                            playList.Songs.Enqueue(song);
+                            await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
+                        }
+                        else
+                        {
+                            await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
+                        }
                     }
                     else
                     {
-                        await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
+                        await context.Channel.SendMessageAsync("\u2639\ufe0f Song name or URL is invalid!.");
+                        return;
                     }
                 }
                 else if (IsValidUrl(query) && query.Contains("soundcloud.com"))
@@ -225,7 +258,7 @@ namespace Atamatay.Services
                         var song = await DownloadFromYoutube(context, searchSong, channel.Id);
 
                         playList.Songs.Enqueue(song);
-                        await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83d\udc68\u200d\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
+                        await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
                     }
                     else
                     {
@@ -240,7 +273,7 @@ namespace Atamatay.Services
                         var song = await DownloadFromYoutube(context, searchSong, channel.Id);
 
                         playList.Songs.Enqueue(song);
-                        await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83d\udc68\u200d\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
+                        await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
                     }
                     else
                     {
@@ -262,7 +295,7 @@ namespace Atamatay.Services
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
                 if (channel == null)
                 {
-                    await context.Channel.SendMessageAsync("\ud83d\udce3 User must be in a voice channel.");
+                    await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel.");
                     return;
                 }
 
