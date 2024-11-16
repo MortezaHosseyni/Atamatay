@@ -4,12 +4,7 @@ using Discord.Audio;
 using Discord.Commands;
 using System.Diagnostics;
 using Atamatay.Models;
-using YoutubeExplode;
-using YoutubeExplode.Videos.Streams;
-using System.Text.RegularExpressions;
-using Microsoft.Extensions.Configuration;
-using SpotifyAPI.Web;
-using YoutubeExplode.Search;
+using Atamatay.Utilities;
 
 namespace Atamatay.Services
 {
@@ -19,12 +14,15 @@ namespace Atamatay.Services
         Task NextAsync(SocketCommandContext context);
         Task<bool> GetPlayerStatus(SocketCommandContext context);
         Task AddPlaylistAsync(SocketCommandContext context, string query);
+        void EnqueuePlaylist(SongModel song);
         Task StopAsync(SocketCommandContext context);
     }
 
-    public class MusicService : IMusicService
+    public class MusicService(IYoutubeService youtube) : IMusicService
     {
-        public List<PlaylistModel> Playlists { get; set; } = [];
+        private readonly IYoutubeService _youtube = youtube;
+
+        public PlaylistModel? Playlist { get; set; }
 
         public async Task PlayAsync(SocketCommandContext context)
         {
@@ -33,34 +31,43 @@ namespace Atamatay.Services
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
                 if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
 
-                var playList = Playlists.FirstOrDefault(p => p.ChannelId == channel.Id);
-
-                if (playList == null)
-                {
-                    await context.Channel.SendMessageAsync("\u2666\ufe0f No playlist found for this channel.");
-                    return;
-                }
-
-                if (playList.Songs == null || playList.Songs.IsEmpty)
+                if (Playlist?.Songs == null || Playlist.Songs.IsEmpty)
                 {
                     await context.Channel.SendMessageAsync($"\ud83d\udd07 |{channel.Name}| channel playlist is empty.");
                     return;
                 }
 
-                playList.AudioClient = await channel.ConnectAsync();
+                Playlist.AudioClient = await channel.ConnectAsync();
 
-                while ((!playList.SkipRequested || !playList.StopRequested) && playList.Songs.TryDequeue(out var song))
+                while ((!Playlist.SkipRequested || !Playlist.StopRequested) && Playlist.Songs.TryDequeue(out var song))
                 {
                     if (song == null) continue;
 
-                    using var ffmpeg = CreateStream($"songs/{playList.ChannelId}/{song.Name}");
+                    if (!Playlist.IsPlaying)
+                    {
+                        if (string.IsNullOrEmpty(song.Url))
+                        {
+                            var searchSong = await _youtube.Search(context, song.Title);
+                            song.Url = searchSong.Url;
+                            song.Name = searchSong.Name;
+                        }
+
+                        var downloadSong = await _youtube.Download(context, song.Url!, channel.Id);
+                        if (!downloadSong)
+                        {
+                            await context.Channel.SendMessageAsync($"\u274c An error occured while playing the song.");
+                            return;
+                        }
+                    }
+
+                    using var ffmpeg = CreateStream($"songs/{Playlist.ChannelId}/{song.Name}");
                     await using var output = ffmpeg.StandardOutput.BaseStream;
                     await context.Channel.SendMessageAsync($"\ud83d\udc3a Playing: {song.Title} | {song.Author} | {song.Duration}");
 
-                    playList.IsPlaying = true;
-                    playList.CurrentSong = new CancellationTokenSource();
+                    Playlist.IsPlaying = true;
+                    Playlist.CurrentSong = new CancellationTokenSource();
 
-                    await using var discord = playList.AudioClient.CreatePCMStream(AudioApplication.Music);
+                    await using var discord = Playlist.AudioClient.CreatePCMStream(AudioApplication.Music);
                     try
                     {
                         var buffer = new byte[81920];
@@ -68,7 +75,7 @@ namespace Atamatay.Services
 
                         while ((bytesRead = await output.ReadAsync(buffer, 0, buffer.Length)) > 0)
                         {
-                            if (playList.CurrentSong.Token.IsCancellationRequested)
+                            if (Playlist.CurrentSong.Token.IsCancellationRequested)
                             {
                                 break;
                             }
@@ -76,23 +83,21 @@ namespace Atamatay.Services
                             await discord.WriteAsync(buffer, 0, bytesRead);
                         }
                     }
-                    catch (TaskCanceledException)
-                    {
-                        Console.WriteLine($"{song.Name} Stopped.");
-                    }
                     finally
                     {
                         await discord.FlushAsync();
-                        DeleteSong(song.Name, playList.ChannelId);
-                        playList.IsPlaying = false;
+                        Playlist.IsPlaying = false;
+                        var channelPath = $"songs/{Playlist.ChannelId}";
+                        if (Directory.Exists(channelPath))
+                            Directory.Delete(channelPath, true);
                     }
 
-                    if (!playList.SkipRequested) continue;
-                    playList.SkipRequested = false;
+                    if (!Playlist.SkipRequested) continue;
+                    Playlist.SkipRequested = false;
                     continue;
                 }
 
-                if (!playList.SkipRequested && playList.Songs.Count == 0)
+                if (!Playlist.SkipRequested && Playlist.Songs.Count == 0)
                 {
                     await context.Channel.SendMessageAsync($"\ud83d\udc3a Playlist is empty!");
                 }
@@ -108,24 +113,24 @@ namespace Atamatay.Services
             var channel = (context.User as IGuildUser)?.VoiceChannel;
             if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
 
-            var playList = Playlists?.Where(p => p.ChannelId == channel.Id).FirstOrDefault();
-            if (playList?.Songs == null || playList.Songs.IsEmpty || playList.AudioClient == null)
+            if (Playlist?.Songs == null || Playlist.Songs.IsEmpty || Playlist.AudioClient == null)
             {
                 await context.Channel.SendMessageAsync($"\ud83d\udd07 |{channel.Name}| channel playlist is empty.");
                 return;
             }
 
-            if (!playList.IsPlaying)
+            if (!Playlist.IsPlaying)
             {
                 await context.Channel.SendMessageAsync("\u2666\ufe0f No song is currently playing.");
                 return;
             }
 
-            playList.SkipRequested = true;
-            await playList.CurrentSong.CancelAsync();
+            Playlist.SkipRequested = true;
+            if (Playlist.CurrentSong != null)
+                await Playlist.CurrentSong.CancelAsync();
             await context.Channel.SendMessageAsync("⏭️ Skipping to next song...");
 
-            if (playList.Songs.Count == 0)
+            if (Playlist.Songs.Count == 0)
             {
                 await context.Channel.SendMessageAsync("Playlist is now empty.");
             }
@@ -136,9 +141,8 @@ namespace Atamatay.Services
             var channel = (context.User as IGuildUser)?.VoiceChannel;
             if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return false; }
 
-            var playList = Playlists.FirstOrDefault(p => p.IsPlaying);
-            if (playList == null || channel.Id == playList.ChannelId)
-                return playList is { Songs: { IsEmpty: false }, AudioClient: not null, IsPlaying: true };
+            if (channel.Id == Playlist?.ChannelId)
+                return Playlist is { Songs: { IsEmpty: false }, AudioClient: not null, IsPlaying: true };
             await context.Channel.SendMessageAsync("\ud83d\udc3a Please join to my channel.");
             return true;
         }
@@ -150,95 +154,31 @@ namespace Atamatay.Services
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
                 if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
 
-                var playList = Playlists.FirstOrDefault(p => p.ChannelId == channel.Id);
-
-                if (playList == null)
+                Playlist ??= new PlaylistModel
                 {
-                    playList = new PlaylistModel
-                    {
-                        ChannelId = channel.Id,
-                        Songs = new ConcurrentQueue<SongModel>(),
-                        CreatedAt = DateTime.Now
-                    };
-                    Playlists.Add(playList);
-                }
+                    ChannelId = channel.Id,
+                    Songs = new ConcurrentQueue<SongModel>(),
+                    CreatedAt = DateTime.Now
+                };
 
-                if (IsValidUrl(query) && query.Contains("youtube.com"))
+                if (Validation.IsUrl(query) && query.Contains("youtube.com"))
                 {
-                    var song = await DownloadFromYoutube(context, query, channel.Id);
+                    var song = await _youtube.Get(context, query, channel.Id);
 
-                    playList.Songs.Enqueue(song);
+                    Playlist.Songs?.Enqueue(song);
                     await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83d\udc68\u200d\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
                 }
-                else if (IsValidUrl(query) && query.Contains("spotify.com"))
+                else if (Validation.IsUrl(query) && query.Contains("spotify.com"))
                 {
-                    var config = new ConfigurationBuilder()
-                        .SetBasePath(Directory.GetCurrentDirectory())
-                        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-                        .Build();
-
-                    var clientId = config["Spotify:ClientId"]!;
-                    var clientSecret = config["Spotify:ClientSecret"]!;
-
-                    var spotifyConfig = SpotifyClientConfig.CreateDefault();
-
-                    var request = new ClientCredentialsRequest(clientId, clientSecret);
-                    var response = await new OAuthClient(spotifyConfig).RequestToken(request);
-
-                    var spotify = new SpotifyClient(spotifyConfig.WithToken(response.AccessToken));
+                    var spotify = new SpotifyService(this, _youtube);
 
                     if (query.Contains("/playlist/"))
                     {
-                        var match = Regex.Match(query, @"open\.spotify\.com/playlist/(?<playlistId>[a-zA-Z0-9]+)");
-                        var playlistId = match.Success ? match.Groups["playlistId"].Value : null;
-
-                        if (string.IsNullOrEmpty(playlistId))
-                        {
-                            await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
-                            return;
-                        }
-
-                        var spotifyPlaylist = await spotify.Playlists.Get(playlistId);
-
-                        if (spotifyPlaylist.Tracks is { Total: > 0 })
-                        {
-                            await foreach (var track in spotify.Paginate(spotifyPlaylist.Tracks).Take(10))
-                            {
-                                if (track.Track is not FullTrack fullTrack) continue;
-                                var searchSong = await SearchSong(context, $"{fullTrack.Name} by {fullTrack.Artists[0].Name}");
-                                var song = await DownloadFromYoutube(context, searchSong, channel.Id);
-
-                                playList.Songs.Enqueue(song);
-                            }
-                            await context.Channel.SendMessageAsync($"\ud83d\udc3a Add Spotify playlist:\n\ud83c\udfb5 {spotifyPlaylist.Name}\n\ud83c\udfa4 {spotifyPlaylist.Owner}\n {spotifyPlaylist.Tracks.Total} song added to playlist.");
-                        }
+                        await spotify.AddPlaylistSongsAsync(context, query, channel.Id);
                     }
                     else if (query.Contains("/track/"))
                     {
-                        var match = Regex.Match(query, @"open\.spotify\.com/track/(?<trackId>[a-zA-Z0-9]+)");
-                        var trackId = match.Success ? match.Groups["trackId"].Value : null;
-
-                        if (string.IsNullOrEmpty(trackId))
-                        {
-                            await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
-                            return;
-                        }
-
-                        var track = await spotify.Tracks.Get(trackId);
-
-                        var searchSong = await SearchSong(context, $"{track.Name} by {track.Artists[0].Name}");
-
-                        if (!string.IsNullOrEmpty(searchSong) && IsValidUrl(searchSong))
-                        {
-                            var song = await DownloadFromYoutube(context, searchSong, channel.Id);
-
-                            playList.Songs.Enqueue(song);
-                            await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
-                        }
-                        else
-                        {
-                            await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
-                        }
+                        await spotify.AddSongAsync(context, query);
                     }
                     else
                     {
@@ -246,39 +186,17 @@ namespace Atamatay.Services
                         return;
                     }
                 }
-                else if (IsValidUrl(query) && query.Contains("soundcloud.com"))
+                else if (Validation.IsUrl(query) && query.Contains("soundcloud.com"))
                 {
-                    var artistName = query.Split('/')[3];
-                    var songName = query.Split('/')[4];
-
-                    var searchSong = await SearchSong(context, $"{songName} by {artistName}");
-
-                    if (!string.IsNullOrEmpty(searchSong) && IsValidUrl(searchSong))
-                    {
-                        var song = await DownloadFromYoutube(context, searchSong, channel.Id);
-
-                        playList.Songs.Enqueue(song);
-                        await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
-                    }
-                    else
-                    {
-                        await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
-                    }
+                    var soundcloud = new SoundcloudService(this, _youtube);
+                    await soundcloud.AddSongAsync(context, query);
                 }
                 else
                 {
-                    var searchSong = await SearchSong(context, query);
-                    if (!string.IsNullOrEmpty(searchSong) && IsValidUrl(searchSong))
-                    {
-                        var song = await DownloadFromYoutube(context, searchSong, channel.Id);
+                    var song = await _youtube.Search(context, query);
 
-                        playList.Songs.Enqueue(song);
-                        await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
-                    }
-                    else
-                    {
-                        await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
-                    }
+                    Playlist.Songs?.Enqueue(song);
+                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
                 }
             }
             catch (Exception e)
@@ -286,6 +204,11 @@ namespace Atamatay.Services
                 Console.WriteLine(e);
                 throw;
             }
+        }
+
+        public void EnqueuePlaylist(SongModel song)
+        {
+            Playlist?.Songs?.Enqueue(song);
         }
 
         public async Task StopAsync(SocketCommandContext context)
@@ -299,33 +222,30 @@ namespace Atamatay.Services
                     return;
                 }
 
-                var playList = Playlists.FirstOrDefault(p => p.ChannelId == channel.Id);
-                if (playList != null)
+                if (Playlist != null)
                 {
-                    if (playList.ChannelId != channel.Id)
+                    if (Playlist.ChannelId != channel.Id)
                     {
                         await context.Channel.SendMessageAsync("\ud83d\udc3a Please join to my channel.");
                         return;
                     }
 
-                    playList.StopRequested = true;
-                    playList.IsPlaying = false;
-                    await playList.CurrentSong.CancelAsync();
+                    Playlist.StopRequested = true;
+                    Playlist.IsPlaying = false;
+                    if (Playlist.CurrentSong != null)
+                        await Playlist.CurrentSong.CancelAsync();
 
-                    await Task.Delay(2000);
+                    Playlist.Songs?.Clear();
 
                     var audioClient = (context.Guild as IGuild)?.AudioClient;
                     if (audioClient != null)
                         await audioClient.StopAsync();
 
-                    var channelPath = $"songs/{playList.ChannelId}";
+                    var channelPath = $"songs/{Playlist.ChannelId}";
                     if (Directory.Exists(channelPath))
-                    {
-                        await Task.Delay(1000);
                         Directory.Delete(channelPath, true);
-                    }
 
-                    Playlists.Remove(playList);
+                    Playlist = null;
                 }
 
                 await context.Channel.SendMessageAsync("\u2666\ufe0f Stopped playing and cleared the playlist.");
@@ -352,91 +272,32 @@ namespace Atamatay.Services
                 RedirectStandardOutput = true,
             });
         }
+        private static void KillStream(Process process)
+        {
+            if (process is { HasExited: false })
+            {
+                try
+                {
+                    process.Kill();
+                    process.WaitForExit();
+                    Console.WriteLine("Process terminated successfully.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to terminate process: {ex.Message}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("Process is already exited or null.");
+            }
+        }
 
         private static void DeleteSong(string songName, ulong channelId)
         {
             var path = $"songs/{channelId}/{songName}";
             if (File.Exists(path))
                 File.Delete(path);
-        }
-
-        public static bool IsValidUrl(string url)
-        {
-            const string pattern = @"^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$";
-            return Regex.IsMatch(url, pattern, RegexOptions.IgnoreCase);
-        }
-        #endregion
-
-        #region Downloads
-        private static async Task<SongModel> DownloadFromYoutube(SocketCommandContext context, string query, ulong channelId)
-        {
-            var youtube = new YoutubeClient();
-
-            var downloadSongMessage = await context.Channel.SendMessageAsync("\ud83c\udfb6 Preparing the song for playback...");
-
-            var video = await youtube.Videos.GetAsync(query);
-
-            var channelPath = $"songs/{channelId}";
-
-            if (!Directory.Exists(channelPath))
-                Directory.CreateDirectory(channelPath);
-
-            var songName = $"{video.Id}.mp3";
-            if (!File.Exists($"{channelPath}/{songName}"))
-            {
-                var streamManifest = await youtube.Videos.Streams.GetManifestAsync(query);
-                var streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
-                await youtube.Videos.Streams.DownloadAsync(streamInfo, $"{channelPath}/{songName}");
-            }
-
-            var title = video.Title;
-            var author = video.Author.ChannelTitle;
-            var duration = video.Duration;
-
-            await downloadSongMessage.DeleteAsync();
-
-            return new SongModel()
-            {
-                Title = title,
-                Author = author,
-                Name = songName,
-                Duration = duration,
-                Id = video.Id,
-                Url = video.Url,
-                Platform = "Youtube",
-                ChannelId = channelId,
-                CreatedAt = DateTime.Now
-            };
-        }
-
-        private static async Task<string?> SearchSong(SocketCommandContext context, string searchParameter)
-        {
-            var searchMessage = await context.Channel.SendMessageAsync($"\ud83d\udd0d Searching for |{searchParameter}| ...");
-
-            var youtube = new YoutubeClient();
-
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(50));
-            try
-            {
-                var results = youtube.Search.GetResultsAsync(searchParameter, cts.Token);
-
-                await foreach (var result in results.WithCancellation(cts.Token))
-                {
-                    if (result is not VideoSearchResult video) continue;
-                    await searchMessage.DeleteAsync();
-                    return video.Url;
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                Console.WriteLine("Search timed out.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"An error occurred: {ex.Message}");
-            }
-
-            return null;
         }
         #endregion
     }

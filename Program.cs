@@ -28,7 +28,8 @@ namespace Atamatay
                 .AddSingleton(_client)
                 .AddSingleton(_commands)
                 .AddSingleton<CommandHandler>()
-                .AddSingleton<IMusicService, MusicService>()
+                .AddScoped<IMusicService, MusicService>()
+                .AddScoped<IYoutubeService, YoutubeService>()
                 .BuildServiceProvider();
 
             _client.Log += LogAsync;
