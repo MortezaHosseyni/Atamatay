@@ -5,6 +5,8 @@ using Discord.Commands;
 using System.Diagnostics;
 using Atamatay.Models;
 using Atamatay.Utilities;
+using System.Timers;
+using Timer = System.Timers.Timer;
 
 namespace Atamatay.Services
 {
@@ -18,11 +20,23 @@ namespace Atamatay.Services
         Task StopAsync(SocketCommandContext context);
     }
 
-    public class MusicService(IYoutubeService youtube) : IMusicService
+    public class MusicService : IMusicService
     {
-        private readonly IYoutubeService _youtube = youtube;
+        private readonly IYoutubeService _youtube;
 
         public PlaylistModel? Playlist { get; set; }
+
+        private readonly Timer _timer;
+
+        public MusicService(IYoutubeService youtube, SocketCommandContext context)
+        {
+            _youtube = youtube;
+
+            _timer = new Timer();
+            _timer.Interval = 120000;
+            _timer.Elapsed += async (sender, e) => await TimerElapsed(sender, e, context);
+            _timer.Start();
+        }
 
         public async Task PlayAsync(SocketCommandContext context)
         {
@@ -62,7 +76,7 @@ namespace Atamatay.Services
 
                     using var ffmpeg = CreateStream($"songs/{Playlist.ChannelId}/{song.Name}");
                     await using var output = ffmpeg.StandardOutput.BaseStream;
-                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Playing: {song.Title} | {song.Author} | {song.Duration}");
+                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Playing: {song.Title} | {song.Author} | {song.Duration:D2}");
 
                     Playlist.IsPlaying = true;
                     Playlist.CurrentSong = new CancellationTokenSource();
@@ -272,32 +286,14 @@ namespace Atamatay.Services
                 RedirectStandardOutput = true,
             });
         }
-        private static void KillStream(Process process)
-        {
-            if (process is { HasExited: false })
-            {
-                try
-                {
-                    process.Kill();
-                    process.WaitForExit();
-                    Console.WriteLine("Process terminated successfully.");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Failed to terminate process: {ex.Message}");
-                }
-            }
-            else
-            {
-                Console.WriteLine("Process is already exited or null.");
-            }
-        }
 
-        private static void DeleteSong(string songName, ulong channelId)
+        private async Task TimerElapsed(object? sender, ElapsedEventArgs e, SocketCommandContext context)
         {
-            var path = $"songs/{channelId}/{songName}";
-            if (File.Exists(path))
-                File.Delete(path);
+            if (Playlist is { IsPlaying: false })
+            {
+                await context.Channel.SendMessageAsync($"\ud83d\udc3a No songs have been playing for the past 2 minutes");
+                await StopAsync(context);
+            }
         }
         #endregion
     }

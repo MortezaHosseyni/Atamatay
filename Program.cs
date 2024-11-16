@@ -34,7 +34,7 @@ namespace Atamatay
 
             _client.Log += LogAsync;
 
-            await _client.SetActivityAsync(new Game("Use $help for commands", ActivityType.Listening));
+            await _client.SetActivityAsync(new Game("$help commands", ActivityType.Listening));
 
             #region Config
             var config = new ConfigurationBuilder()
