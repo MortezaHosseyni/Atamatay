@@ -16,6 +16,8 @@ namespace Atamatay.Modules
 
             var isPlaying = await _music.GetPlayerStatus(Context);
 
+            _music.SetContext(Context);
+
             if (!isPlaying)
             {
                 await _music.PlayAsync(Context);
@@ -27,6 +29,7 @@ namespace Atamatay.Modules
         [Summary("Skips to the next track.")]
         public async Task NextAsync()
         {
+            _music.SetContext(Context);
             await _music.NextAsync(Context);
         }
 
@@ -35,6 +38,7 @@ namespace Atamatay.Modules
         [Summary("Stops the bot and clear playlist.")]
         public async Task StopAsync()
         {
+            _music.SetContext(Context);
             await _music.StopAsync(Context);
         }
 

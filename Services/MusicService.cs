@@ -18,6 +18,7 @@ namespace Atamatay.Services
         Task AddPlaylistAsync(SocketCommandContext context, string query);
         void EnqueuePlaylist(SongModel song);
         Task StopAsync(SocketCommandContext context);
+        void SetContext(SocketCommandContext context);
     }
 
     public class MusicService : IMusicService
@@ -27,14 +28,15 @@ namespace Atamatay.Services
         public PlaylistModel? Playlist { get; set; }
 
         private readonly Timer _timer;
+        private SocketCommandContext? _context;
 
-        public MusicService(IYoutubeService youtube, SocketCommandContext context)
+        public MusicService(IYoutubeService youtube)
         {
             _youtube = youtube;
 
             _timer = new Timer();
             _timer.Interval = 120000;
-            _timer.Elapsed += async (sender, e) => await TimerElapsed(sender, e, context);
+            _timer.Elapsed += async (sender, e) => await TimerElapsed(sender, e);
             _timer.Start();
         }
 
@@ -70,13 +72,13 @@ namespace Atamatay.Services
                         if (!downloadSong)
                         {
                             await context.Channel.SendMessageAsync($"\u274c An error occured while playing the song.");
-                            return;
+                            continue;
                         }
                     }
 
                     using var ffmpeg = CreateStream($"songs/{Playlist.ChannelId}/{song.Name}");
                     await using var output = ffmpeg.StandardOutput.BaseStream;
-                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Playing: {song.Title} | {song.Author} | {song.Duration:D2}");
+                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Playing: {song.Title} | {song.Author} | {song.Duration}");
 
                     Playlist.IsPlaying = true;
                     Playlist.CurrentSong = new CancellationTokenSource();
@@ -101,6 +103,11 @@ namespace Atamatay.Services
                     {
                         await discord.FlushAsync();
                         Playlist.IsPlaying = false;
+
+                        ffmpeg.Kill();
+
+                        await Task.Delay(1000);
+
                         var channelPath = $"songs/{Playlist.ChannelId}";
                         if (Directory.Exists(channelPath))
                             Directory.Delete(channelPath, true);
@@ -287,13 +294,19 @@ namespace Atamatay.Services
             });
         }
 
-        private async Task TimerElapsed(object? sender, ElapsedEventArgs e, SocketCommandContext context)
+        public void SetContext(SocketCommandContext context)
         {
-            if (Playlist is { IsPlaying: false })
-            {
-                await context.Channel.SendMessageAsync($"\ud83d\udc3a No songs have been playing for the past 2 minutes");
-                await StopAsync(context);
-            }
+            _context = context;
+        }
+
+        private async Task TimerElapsed(object sender, ElapsedEventArgs e)
+        {
+            if (_context != null)
+                if (Playlist is { IsPlaying: false })
+                {
+                    await _context.Channel.SendMessageAsync($"\ud83d\udc3a No songs have been playing for the past 2 minutes");
+                    await StopAsync(_context);
+                }
         }
         #endregion
     }

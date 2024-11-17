@@ -1,4 +1,5 @@
-﻿using Atamatay.Handlers;
+﻿using System.Diagnostics;
+using Atamatay.Handlers;
 using Atamatay.Services;
 using Discord;
 using Discord.Commands;
@@ -33,6 +34,7 @@ namespace Atamatay
                 .BuildServiceProvider();
 
             _client.Log += LogAsync;
+            _client.UserVoiceStateUpdated += HandleVoiceStateUpdated;
 
             await _client.SetActivityAsync(new Game("$help commands", ActivityType.Listening));
 
@@ -51,6 +53,49 @@ namespace Atamatay
             await commandHandler.InitializeAsync();
 
             await Task.Delay(-1);
+        }
+
+        private async Task HandleVoiceStateUpdated(SocketUser user, SocketVoiceState oldState, SocketVoiceState newState)
+        {
+            try
+            {
+                if (user.Id == _client.CurrentUser.Id)
+                {
+                    if (oldState.VoiceChannel != null && newState.VoiceChannel == null)
+                    {
+                        var guild = (oldState.VoiceChannel as SocketGuildChannel)?.Guild;
+                        if (guild != null)
+                        {
+                            await HandleBotKicked(guild, oldState.VoiceChannel);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling voice state update: {ex.Message}");
+            }
+        }
+
+        private static async Task HandleBotKicked(SocketGuild guild, SocketVoiceChannel channel)
+        {
+            try
+            {
+                Console.WriteLine($"Bot was kicked from {channel.Name} in {guild.Name}");
+
+                var ffmpeg = Process.GetProcessesByName("ffmpeg")[0];
+                ffmpeg.Kill();
+
+                await Task.Delay(1000);
+
+                var path = $"songs/{channel.Id}";
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling bot kick: {ex.Message}");
+            }
         }
 
         private static Task LogAsync(LogMessage log)
