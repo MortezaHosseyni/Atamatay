@@ -266,12 +266,6 @@ namespace Atamatay.Services
                     if (audioClient != null)
                         await audioClient.StopAsync();
 
-                    await Task.Delay(1000);
-
-                    var channelPath = $"songs/{Playlist.ChannelId}";
-                    if (Directory.Exists(channelPath))
-                        Directory.Delete(channelPath, true);
-
                     Playlist = null;
                 }
 
