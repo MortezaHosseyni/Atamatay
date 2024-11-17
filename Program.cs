@@ -83,8 +83,11 @@ namespace Atamatay
             {
                 Console.WriteLine($"Bot was kicked from {channel.Name} in {guild.Name}");
 
-                var ffmpeg = Process.GetProcessesByName("ffmpeg")[0];
-                ffmpeg.Kill();
+                var ffmpeg = Process.GetProcessesByName("ffmpeg");
+                foreach (var process in ffmpeg)
+                {
+                    process.Kill();
+                }
 
                 await Task.Delay(1000);
 

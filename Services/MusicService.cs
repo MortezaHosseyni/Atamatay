@@ -30,6 +30,8 @@ namespace Atamatay.Services
         private readonly Timer _timer;
         private SocketCommandContext? _context;
 
+        private Process? Ffmpeg;
+
         public MusicService(IYoutubeService youtube)
         {
             _youtube = youtube;
@@ -57,6 +59,37 @@ namespace Atamatay.Services
 
                 while ((!Playlist.SkipRequested || !Playlist.StopRequested) && Playlist.Songs.TryDequeue(out var song))
                 {
+                    context.Client.UserVoiceStateUpdated += async (user, oldState, newState) =>
+                    {
+                        if (user.Id == context.Client.CurrentUser.Id &&
+                            oldState.VoiceChannel != null &&
+                            newState.VoiceChannel == null)
+                        {
+                            Playlist.StopRequested = true;
+                            Playlist.IsPlaying = false;
+                            if (Playlist.CurrentSong != null)
+                                await Playlist.CurrentSong.CancelAsync();
+
+                            Playlist.Songs?.Clear();
+
+                            var audioClient = (context.Guild as IGuild)?.AudioClient;
+                            if (audioClient != null)
+                                await audioClient.StopAsync();
+
+                            Ffmpeg?.Kill();
+
+                            await Task.Delay(1000);
+
+                            var channelPath = $"songs/{Playlist.ChannelId}";
+                            if (Directory.Exists(channelPath))
+                                Directory.Delete(channelPath, true);
+
+                            Playlist = null;
+
+                            await context.Channel.SendMessageAsync($"\u274c Kicked from |{channel.Name}| :(");
+                        }
+                    };
+
                     if (song == null) continue;
 
                     if (!Playlist.IsPlaying)
@@ -77,6 +110,7 @@ namespace Atamatay.Services
                     }
 
                     using var ffmpeg = CreateStream($"songs/{Playlist.ChannelId}/{song.Name}");
+                    Ffmpeg = ffmpeg;
                     await using var output = ffmpeg.StandardOutput.BaseStream;
                     await context.Channel.SendMessageAsync($"\ud83d\udc3a Playing: {song.Title} | {song.Author} | {song.Duration}");
 
@@ -261,6 +295,10 @@ namespace Atamatay.Services
                     var audioClient = (context.Guild as IGuild)?.AudioClient;
                     if (audioClient != null)
                         await audioClient.StopAsync();
+
+                    Ffmpeg?.Kill();
+
+                    await Task.Delay(1000);
 
                     var channelPath = $"songs/{Playlist.ChannelId}";
                     if (Directory.Exists(channelPath))
