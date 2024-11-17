@@ -30,8 +30,6 @@ namespace Atamatay.Services
         private readonly Timer _timer;
         private SocketCommandContext? _context;
 
-        private Process? Ffmpeg;
-
         public MusicService(IYoutubeService youtube)
         {
             _youtube = youtube;
@@ -55,41 +53,14 @@ namespace Atamatay.Services
                     return;
                 }
 
-                Playlist.AudioClient = await channel.ConnectAsync();
-
-                while ((!Playlist.SkipRequested || !Playlist.StopRequested) && Playlist.Songs.TryDequeue(out var song))
+                if (channel.Id != Playlist.ChannelId)
                 {
-                    context.Client.UserVoiceStateUpdated += async (user, oldState, newState) =>
-                    {
-                        if (user.Id == context.Client.CurrentUser.Id &&
-                            oldState.VoiceChannel != null &&
-                            newState.VoiceChannel == null)
-                        {
-                            Playlist.StopRequested = true;
-                            Playlist.IsPlaying = false;
-                            if (Playlist.CurrentSong != null)
-                                await Playlist.CurrentSong.CancelAsync();
+                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Please join to |{context.Channel.Name}|.");
+                    return;
+                }
 
-                            Playlist.Songs?.Clear();
-
-                            var audioClient = (context.Guild as IGuild)?.AudioClient;
-                            if (audioClient != null)
-                                await audioClient.StopAsync();
-
-                            Ffmpeg?.Kill();
-
-                            await Task.Delay(1000);
-
-                            var channelPath = $"songs/{Playlist.ChannelId}";
-                            if (Directory.Exists(channelPath))
-                                Directory.Delete(channelPath, true);
-
-                            Playlist = null;
-
-                            await context.Channel.SendMessageAsync($"\u274c Kicked from |{channel.Name}| :(");
-                        }
-                    };
-
+                while (!Playlist.SkipRequested && Playlist.Songs.TryDequeue(out var song))
+                {
                     if (song == null) continue;
 
                     if (!Playlist.IsPlaying)
@@ -110,13 +81,13 @@ namespace Atamatay.Services
                     }
 
                     using var ffmpeg = CreateStream($"songs/{Playlist.ChannelId}/{song.Name}");
-                    Ffmpeg = ffmpeg;
                     await using var output = ffmpeg.StandardOutput.BaseStream;
                     await context.Channel.SendMessageAsync($"\ud83d\udc3a Playing: {song.Title} | {song.Author} | {song.Duration}");
 
                     Playlist.IsPlaying = true;
                     Playlist.CurrentSong = new CancellationTokenSource();
 
+                    Playlist.AudioClient ??= await channel.ConnectAsync();
                     await using var discord = Playlist.AudioClient.CreatePCMStream(AudioApplication.Music);
                     try
                     {
@@ -285,7 +256,6 @@ namespace Atamatay.Services
                         return;
                     }
 
-                    Playlist.StopRequested = true;
                     Playlist.IsPlaying = false;
                     if (Playlist.CurrentSong != null)
                         await Playlist.CurrentSong.CancelAsync();
@@ -295,8 +265,6 @@ namespace Atamatay.Services
                     var audioClient = (context.Guild as IGuild)?.AudioClient;
                     if (audioClient != null)
                         await audioClient.StopAsync();
-
-                    Ffmpeg?.Kill();
 
                     await Task.Delay(1000);
 
