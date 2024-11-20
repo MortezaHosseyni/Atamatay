@@ -309,7 +309,7 @@ namespace Atamatay.Services
         {
             if (Playlist != null && _context?.Guild.GetVoiceChannel(Playlist.ChannelId) is { } voiceChannel)
             {
-                var usersInChannel = voiceChannel.Users;
+                var usersInChannel = voiceChannel.ConnectedUsers;
                 var nonBotUsers = usersInChannel.Where(user => !user.IsBot);
 
                 if (_context != null)

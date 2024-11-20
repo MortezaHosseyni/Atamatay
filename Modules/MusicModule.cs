@@ -1,4 +1,6 @@
 ﻿using Atamatay.Services;
+using Atamatay.Utilities;
+using Discord;
 using Discord.Commands;
 
 namespace Atamatay.Modules
@@ -51,7 +53,7 @@ namespace Atamatay.Modules
                                        "`$stop ($leave)` - Stops the current track.\n" +
                                        "`$next ($skip)` - Skips to the next track.\n";
 
-            await ReplyAsync(helpMessage);
+            await Message.SendEmbedAsync(Context, "Music commands!", helpMessage, Color.DarkBlue);
         }
     }
 }
