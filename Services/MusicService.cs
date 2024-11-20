@@ -8,6 +8,7 @@ using Atamatay.Utilities;
 using System.Timers;
 using Timer = System.Timers.Timer;
 using Discord.WebSocket;
+using System;
 
 namespace Atamatay.Services
 {
@@ -22,27 +23,25 @@ namespace Atamatay.Services
         void SetContext(SocketCommandContext context);
     }
 
-    public class MusicService : IMusicService
+    public class MusicService(IYoutubeService youtube) : IMusicService
     {
-        private readonly DiscordSocketClient _client;
-        private readonly IYoutubeService _youtube;
+        private readonly IYoutubeService _youtube = youtube;
 
         public PlaylistModel? Playlist { get; set; }
 
         private Timer _timer;
         private SocketCommandContext? _context;
 
-        public MusicService(IYoutubeService youtube)
-        {
-            _youtube = youtube;
-        }
-
         public async Task PlayAsync(SocketCommandContext context)
         {
             try
             {
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
-                await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
+                if (channel == null)
+                {
+                    await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
+                    return;
+                }
 
                 if (Playlist?.Songs == null || Playlist.Songs.IsEmpty)
                 {
@@ -139,7 +138,11 @@ namespace Atamatay.Services
         public async Task NextAsync(SocketCommandContext context)
         {
             var channel = (context.User as IGuildUser)?.VoiceChannel;
-            await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
+            if (channel == null)
+            {
+                await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
+                return;
+            }
 
             if (Playlist?.Songs == null || Playlist.Songs.IsEmpty || Playlist.AudioClient == null)
             {
@@ -306,25 +309,24 @@ namespace Atamatay.Services
 
         private async Task TimerElapsed(object sender, ElapsedEventArgs e)
         {
-            if (_client.GetChannel(Playlist.ChannelId) is not SocketVoiceChannel voiceChannel)
+            if (Playlist != null && _context?.Guild.GetVoiceChannel(Playlist.ChannelId) is { } voiceChannel)
             {
-                throw new ArgumentException("Voice channel not found or invalid channel ID.");
-            }
-            var usersInChannel = voiceChannel.Users;
-            var nonBotUsers = usersInChannel.Where(user => !user.IsBot);
+                var usersInChannel = voiceChannel.Users;
+                var nonBotUsers = usersInChannel.Where(user => !user.IsBot);
 
-            if (_context != null)
-            {
-                if (Playlist is { IsPlaying: false })
+                if (_context != null)
                 {
-                    await Message.SendEmbedAsync(_context, "No songs have been playing!", "No songs have been playing for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
-                    await StopAsync(_context);
-                }
+                    if (Playlist is { IsPlaying: false })
+                    {
+                        await Message.SendEmbedAsync(_context, "No songs have been playing!", "No songs have been playing for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
+                        await StopAsync(_context);
+                    }
 
-                if (!nonBotUsers.Any())
-                {
-                    await Message.SendEmbedAsync(_context, "No one is listening!", "No one is listening for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
-                    await StopAsync(_context);
+                    if (!nonBotUsers.Any())
+                    {
+                        await Message.SendEmbedAsync(_context, "No one is listening!", "No one is listening for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
+                        await StopAsync(_context);
+                    }
                 }
             }
         }
