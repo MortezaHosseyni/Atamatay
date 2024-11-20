@@ -7,8 +7,6 @@ using Atamatay.Models;
 using Atamatay.Utilities;
 using System.Timers;
 using Timer = System.Timers.Timer;
-using Discord.WebSocket;
-using System;
 
 namespace Atamatay.Services
 {
@@ -319,13 +317,33 @@ namespace Atamatay.Services
                     if (Playlist is { IsPlaying: false })
                     {
                         await Message.SendEmbedAsync(_context, "No songs have been playing!", "No songs have been playing for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
-                        await StopAsync(_context);
+                        Playlist.IsPlaying = false;
+                        if (Playlist.CurrentSong != null)
+                            await Playlist.CurrentSong.CancelAsync();
+
+                        Playlist.Songs?.Clear();
+
+                        var audioClient = (_context.Guild as IGuild)?.AudioClient;
+                        if (audioClient != null)
+                            await audioClient.StopAsync();
+
+                        Playlist = null;
                     }
 
                     if (!nonBotUsers.Any())
                     {
                         await Message.SendEmbedAsync(_context, "No one is listening!", "No one is listening for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
-                        await StopAsync(_context);
+                        Playlist.IsPlaying = false;
+                        if (Playlist.CurrentSong != null)
+                            await Playlist.CurrentSong.CancelAsync();
+
+                        Playlist.Songs?.Clear();
+
+                        var audioClient = (_context.Guild as IGuild)?.AudioClient;
+                        if (audioClient != null)
+                            await audioClient.StopAsync();
+
+                        Playlist = null;
                     }
                 }
             }
