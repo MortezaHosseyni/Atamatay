@@ -7,6 +7,7 @@ using Atamatay.Models;
 using Atamatay.Utilities;
 using System.Timers;
 using Timer = System.Timers.Timer;
+using Discord.WebSocket;
 
 namespace Atamatay.Services
 {
@@ -23,21 +24,17 @@ namespace Atamatay.Services
 
     public class MusicService : IMusicService
     {
+        private readonly DiscordSocketClient _client;
         private readonly IYoutubeService _youtube;
 
         public PlaylistModel? Playlist { get; set; }
 
-        private readonly Timer _timer;
+        private Timer _timer;
         private SocketCommandContext? _context;
 
         public MusicService(IYoutubeService youtube)
         {
             _youtube = youtube;
-
-            _timer = new Timer();
-            _timer.Interval = 120000;
-            _timer.Elapsed += async (sender, e) => await TimerElapsed(sender, e);
-            _timer.Start();
         }
 
         public async Task PlayAsync(SocketCommandContext context)
@@ -58,6 +55,11 @@ namespace Atamatay.Services
                     await context.Channel.SendMessageAsync($"\ud83d\udc3a Please join to |{context.Channel.Name}|.");
                     return;
                 }
+
+                _timer = new Timer();
+                _timer.Interval = 120000;
+                _timer.Elapsed += async (sender, e) => await TimerElapsed(sender, e);
+                _timer.Start();
 
                 while (!Playlist.SkipRequested && Playlist.Songs.TryDequeue(out var song))
                 {
@@ -301,12 +303,27 @@ namespace Atamatay.Services
 
         private async Task TimerElapsed(object sender, ElapsedEventArgs e)
         {
+            if (_client.GetChannel(Playlist.ChannelId) is not SocketVoiceChannel voiceChannel)
+            {
+                throw new ArgumentException("Voice channel not found or invalid channel ID.");
+            }
+            var usersInChannel = voiceChannel.Users;
+            var nonBotUsers = usersInChannel.Where(user => !user.IsBot);
+
             if (_context != null)
+            {
                 if (Playlist is { IsPlaying: false })
                 {
                     await _context.Channel.SendMessageAsync($"\ud83d\udc3a No songs have been playing for the past 2 minutes");
                     await StopAsync(_context);
                 }
+
+                if (!nonBotUsers.Any())
+                {
+                    await _context.Channel.SendMessageAsync($"\ud83d\udc3a No one is listening for the past 2 minutes");
+                    await StopAsync(_context);
+                }
+            }
         }
         #endregion
     }
