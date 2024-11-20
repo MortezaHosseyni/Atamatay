@@ -4,6 +4,7 @@ using YoutubeExplode.Search;
 using YoutubeExplode;
 using YoutubeExplode.Videos.Streams;
 using Discord;
+using Atamatay.Utilities;
 
 namespace Atamatay.Services
 {
@@ -45,7 +46,7 @@ namespace Atamatay.Services
         public async Task<SongModel> Search(SocketCommandContext context, string searchParameter)
         {
             var channel = (context.User as IGuildUser)?.VoiceChannel;
-            if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return null!; }
+            if (channel == null) { await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue); return null!; }
 
             var searchMessage = await context.Channel.SendMessageAsync($"\ud83d\udd0d Searching for |{searchParameter}| ...");
 

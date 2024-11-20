@@ -3,6 +3,8 @@ using SpotifyAPI.Web;
 using System.Text.RegularExpressions;
 using Atamatay.Models;
 using Microsoft.Extensions.Configuration;
+using Atamatay.Utilities;
+using Discord;
 
 namespace Atamatay.Services
 {
@@ -37,7 +39,7 @@ namespace Atamatay.Services
             var trackId = match.Success ? match.Groups["trackId"].Value : null;
             if (string.IsNullOrEmpty(trackId))
             {
-                await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
+                await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
                 return;
             }
 
@@ -50,7 +52,7 @@ namespace Atamatay.Services
 
             _music.EnqueuePlaylist(song);
 
-            await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
+            await Message.SendEmbedAsync(context, "Add to playlist", $"\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}", Color.Green);
         }
 
         public async Task AddPlaylistSongsAsync(SocketCommandContext context, string query, ulong channelId)
@@ -59,7 +61,7 @@ namespace Atamatay.Services
             var playlistId = match.Success ? match.Groups["playlistId"].Value : null;
             if (string.IsNullOrEmpty(playlistId))
             {
-                await context.Channel.SendMessageAsync("\u2639\ufe0f I can't find song!.");
+                await Message.SendEmbedAsync(context, "Not found", "I can't find song with that name.", Color.Red);
                 return;
             }
 
@@ -95,7 +97,7 @@ namespace Atamatay.Services
 
             await Task.WhenAll(tasks);
 
-            await context.Channel.SendMessageAsync($"\ud83d\udc3a Add Spotify playlist:\n\ud83c\udfb5 {spotifyPlaylist.Name}\n\ud83c\udfa4 {spotifyPlaylist.Owner?.DisplayName}\n {spotifyPlaylist.Tracks.Total} song added to playlist.");
+            await Message.SendEmbedAsync(context, "Add Spotify playlist", $"🎵 {spotifyPlaylist.Name}\n🎤 {spotifyPlaylist.Owner?.DisplayName}\n {spotifyPlaylist.Tracks.Total} song added to playlist.", Color.Green);
         }
     }
 }

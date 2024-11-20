@@ -42,17 +42,17 @@ namespace Atamatay.Services
             try
             {
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
-                if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
+                await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
 
                 if (Playlist?.Songs == null || Playlist.Songs.IsEmpty)
                 {
-                    await context.Channel.SendMessageAsync($"\ud83d\udd07 |{channel.Name}| channel playlist is empty.");
+                    await Message.SendEmbedAsync(context, channel.Name, "Channel playlist is empty.", Color.Purple);
                     return;
                 }
 
                 if (channel.Id != Playlist.ChannelId)
                 {
-                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Please join to |{context.Channel.Name}|.");
+                    await Message.SendEmbedAsync(context, context.Channel.Name, "Please join to my voice channel.", Color.Blue);
                     return;
                 }
 
@@ -77,14 +77,14 @@ namespace Atamatay.Services
                         var downloadSong = await _youtube.Download(context, song.Url!, channel.Id);
                         if (!downloadSong)
                         {
-                            await context.Channel.SendMessageAsync($"\u274c An error occured while playing the song.");
+                            await Message.SendEmbedAsync(context, "ERROR!", "An error occured while playing the song.", Color.Red);
                             continue;
                         }
                     }
 
                     using var ffmpeg = CreateStream($"songs/{Playlist.ChannelId}/{song.Name}");
                     await using var output = ffmpeg.StandardOutput.BaseStream;
-                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Playing: {song.Title} | {song.Author} | {song.Duration}");
+                    await Message.SendEmbedAsync(context, "Playing...", $"{song.Title} | {song.Author} | {song.Duration}", Color.Green);
 
                     Playlist.IsPlaying = true;
                     Playlist.CurrentSong = new CancellationTokenSource();
@@ -127,7 +127,7 @@ namespace Atamatay.Services
 
                 if (!Playlist.SkipRequested && Playlist.Songs.Count == 0)
                 {
-                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Playlist is empty!");
+                    await Message.SendEmbedAsync(context, "Empty playlist!", "All the songs were played.", Color.Purple);
                 }
             }
             catch (Exception e)
@@ -139,39 +139,38 @@ namespace Atamatay.Services
         public async Task NextAsync(SocketCommandContext context)
         {
             var channel = (context.User as IGuildUser)?.VoiceChannel;
-            if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
+            await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
 
             if (Playlist?.Songs == null || Playlist.Songs.IsEmpty || Playlist.AudioClient == null)
             {
-                await context.Channel.SendMessageAsync($"\ud83d\udd07 |{channel.Name}| channel playlist is empty.");
+                await Message.SendEmbedAsync(context, channel.Name, "Channel playlist is empty.", Color.Purple);
                 return;
             }
 
             if (!Playlist.IsPlaying)
             {
-                await context.Channel.SendMessageAsync("\u2666\ufe0f No song is currently playing.");
+                await Message.SendEmbedAsync(context, "Empty playlist!", "No song is currently playing", Color.Red);
                 return;
             }
 
             Playlist.SkipRequested = true;
             if (Playlist.CurrentSong != null)
                 await Playlist.CurrentSong.CancelAsync();
-            await context.Channel.SendMessageAsync("⏭️ Skipping to next song...");
+            await Message.SendEmbedAsync(context, "NEXT!", "Skipping to next song...", Color.Green);
 
             if (Playlist.Songs.Count == 0)
             {
-                await context.Channel.SendMessageAsync("Playlist is now empty.");
+                await Message.SendEmbedAsync(context, "Empty playlist!", "All the songs were played.", Color.Purple);
             }
         }
 
         public async Task<bool> GetPlayerStatus(SocketCommandContext context)
         {
             var channel = (context.User as IGuildUser)?.VoiceChannel;
-            if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return false; }
+            if (channel == null) { return false; }
 
             if (channel.Id == Playlist?.ChannelId)
                 return Playlist is { Songs: { IsEmpty: false }, AudioClient: not null, IsPlaying: true };
-            await context.Channel.SendMessageAsync("\ud83d\udc3a Please join to my channel.");
             return true;
         }
 
@@ -180,7 +179,11 @@ namespace Atamatay.Services
             try
             {
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
-                if (channel == null) { await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel."); return; }
+                if (channel == null)
+                {
+                    await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
+                    return;
+                }
 
                 Playlist ??= new PlaylistModel
                 {
@@ -194,7 +197,7 @@ namespace Atamatay.Services
                     var song = await _youtube.Get(context, query, channel.Id);
 
                     Playlist.Songs?.Enqueue(song);
-                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83d\udc68\u200d\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
+                    await Message.SendEmbedAsync(context, "Add to playlist", $"\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}", Color.Green);
                 }
                 else if (Validation.IsUrl(query) && query.Contains("spotify.com"))
                 {
@@ -210,7 +213,7 @@ namespace Atamatay.Services
                     }
                     else
                     {
-                        await context.Channel.SendMessageAsync("\u2639\ufe0f Song name or URL is invalid!.");
+                        await Message.SendEmbedAsync(context, "Invalid query", "Song name or URL is invalid", Color.Red);
                         return;
                     }
                 }
@@ -224,7 +227,7 @@ namespace Atamatay.Services
                     var song = await _youtube.Search(context, query);
 
                     Playlist.Songs?.Enqueue(song);
-                    await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
+                    await Message.SendEmbedAsync(context, "Add to playlist", $"\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}", Color.Green);
                 }
             }
             catch (Exception e)
@@ -246,7 +249,7 @@ namespace Atamatay.Services
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
                 if (channel == null)
                 {
-                    await context.Channel.SendMessageAsync("\ud83d\udce3 You must be in a voice channel.");
+                    await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
                     return;
                 }
 
@@ -254,7 +257,7 @@ namespace Atamatay.Services
                 {
                     if (Playlist.ChannelId != channel.Id)
                     {
-                        await context.Channel.SendMessageAsync("\ud83d\udc3a Please join to my channel.");
+                        await Message.SendEmbedAsync(context, "Join to voice!", "Please join to my voice channel.", Color.Blue);
                         return;
                     }
 
@@ -271,7 +274,7 @@ namespace Atamatay.Services
                     Playlist = null;
                 }
 
-                await context.Channel.SendMessageAsync("\u2666\ufe0f Stopped playing and cleared the playlist.");
+                await Message.SendEmbedAsync(context, "STOP!", "Stopped playing and cleared the playlist.", Color.Orange, "Bot disconnected from channel.");
             }
             catch (TaskCanceledException)
             {
@@ -314,13 +317,13 @@ namespace Atamatay.Services
             {
                 if (Playlist is { IsPlaying: false })
                 {
-                    await _context.Channel.SendMessageAsync($"\ud83d\udc3a No songs have been playing for the past 2 minutes");
+                    await Message.SendEmbedAsync(_context, "No songs have been playing!", "No songs have been playing for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
                     await StopAsync(_context);
                 }
 
                 if (!nonBotUsers.Any())
                 {
-                    await _context.Channel.SendMessageAsync($"\ud83d\udc3a No one is listening for the past 2 minutes");
+                    await Message.SendEmbedAsync(_context, "No one is listening!", "No one is listening for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
                     await StopAsync(_context);
                 }
             }

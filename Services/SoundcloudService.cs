@@ -1,4 +1,6 @@
-﻿using Discord.Commands;
+﻿using Atamatay.Utilities;
+using Discord;
+using Discord.Commands;
 
 namespace Atamatay.Services
 {
@@ -15,7 +17,7 @@ namespace Atamatay.Services
             var song = await _youtube.Search(context, $"{songName} by {artistName}");
 
             _music.EnqueuePlaylist(song);
-            await context.Channel.SendMessageAsync($"\ud83d\udc3a Add to playlist:\n\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}");
+            await Message.SendEmbedAsync(context, "Add to playlist", $"\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}", Color.Green);
         }
     }
 }
