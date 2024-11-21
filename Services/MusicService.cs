@@ -21,13 +21,13 @@ namespace Atamatay.Services
         void SetContext(SocketCommandContext context);
     }
 
-    public class MusicService(IYoutubeService youtube, Timer timer) : IMusicService
+    public class MusicService(IYoutubeService youtube) : IMusicService
     {
         private readonly IYoutubeService _youtube = youtube;
 
         public PlaylistModel? Playlist { get; set; }
 
-        private readonly Timer _timer = timer;
+        private Timer? _timer;
         private SocketCommandContext? _context;
 
         public async Task PlayAsync(SocketCommandContext context)
@@ -53,8 +53,12 @@ namespace Atamatay.Services
                     return;
                 }
 
-                _timer.Interval = 120000;
-                _timer.Elapsed += async (sender, e) => await TimerElapsed(sender, e);
+                _timer = new Timer();
+                _timer.Interval = 300000;
+                _timer.Elapsed += async (sender, e) =>
+                {
+                    if (sender != null) await TimerElapsed(sender, e);
+                };
                 _timer.Start();
 
                 while (!Playlist.SkipRequested && Playlist.Songs.TryDequeue(out var song))
@@ -315,7 +319,7 @@ namespace Atamatay.Services
                 {
                     if (Playlist is { IsPlaying: false })
                     {
-                        await Message.SendEmbedAsync(_context, "No songs have been playing!", "No songs have been playing for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
+                        await Message.SendEmbedAsync(_context, "No songs have been playing!", "No songs have been playing for the past 5 minutes", Color.Red, "Bot disconnected from channel.");
                         Playlist.IsPlaying = false;
                         if (Playlist.CurrentSong != null)
                             await Playlist.CurrentSong.CancelAsync();
@@ -331,7 +335,7 @@ namespace Atamatay.Services
 
                     if (!nonBotUsers.Any())
                     {
-                        await Message.SendEmbedAsync(_context, "No one is listening!", "No one is listening for the past 2 minutes", Color.Red, "Bot disconnected from channel.");
+                        await Message.SendEmbedAsync(_context, "No one is listening!", "No one is listening for the past 5 minutes", Color.Red, "Bot disconnected from channel.");
                         Playlist.IsPlaying = false;
                         if (Playlist.CurrentSong != null)
                             await Playlist.CurrentSong.CancelAsync();
