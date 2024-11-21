@@ -6,6 +6,7 @@ using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Timer = System.Timers.Timer;
 
 namespace Atamatay
 {
@@ -31,6 +32,10 @@ namespace Atamatay
                 .AddSingleton<CommandHandler>()
                 .AddScoped<IMusicService, MusicService>()
                 .AddScoped<IYoutubeService, YoutubeService>()
+                .AddScoped<Timer>()
+                .AddScoped<HttpClient>()
+                .AddScoped<IGptService, GptService>()
+                .AddScoped<IDdService, DdService>()
                 .BuildServiceProvider();
 
             _client.Log += LogAsync;

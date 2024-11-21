@@ -21,13 +21,13 @@ namespace Atamatay.Services
         void SetContext(SocketCommandContext context);
     }
 
-    public class MusicService(IYoutubeService youtube) : IMusicService
+    public class MusicService(IYoutubeService youtube, Timer timer) : IMusicService
     {
         private readonly IYoutubeService _youtube = youtube;
 
         public PlaylistModel? Playlist { get; set; }
 
-        private Timer _timer;
+        private readonly Timer _timer = timer;
         private SocketCommandContext? _context;
 
         public async Task PlayAsync(SocketCommandContext context)
@@ -53,7 +53,6 @@ namespace Atamatay.Services
                     return;
                 }
 
-                _timer = new Timer();
                 _timer.Interval = 120000;
                 _timer.Elapsed += async (sender, e) => await TimerElapsed(sender, e);
                 _timer.Start();
