@@ -343,7 +343,7 @@ namespace Atamatay.Services
             var usersInChannel = voiceChannel?.Users
                 .Count(x => x.Id != context.Client.CurrentUser.Id);
 
-            if (usersInChannel <= 1 && voiceChannel != null)
+            if (usersInChannel <= 0 && voiceChannel != null)
             {
                 await voiceChannel.DisconnectAsync();
 

@@ -10,7 +10,7 @@ namespace Atamatay.Modules
         private readonly IDdService _dd = dd;
 
         [Command("dd-start")]
-        [Alias("dd")]
+        [Alias("dd-create")]
         [Summary("Start a new D&D game.")]
         public async Task StartGameAsync([Remainder] string args)
         {
@@ -53,7 +53,23 @@ namespace Atamatay.Modules
 
             var pd = string.Join("\n", playerDetails);
 
-            await _dd.StartGame(Context, worldName, pd);
+            await _dd.StartGame(Context, worldName, pd, mentionedUsers);
+        }
+
+        [Command("dd-dialog")]
+        [Alias("dd")]
+        [Summary("Save and send player dialog.")]
+        public async Task SendDialog([Remainder] string args)
+        {
+
+        }
+
+        [Command("dd-accept")]
+        [Alias("dd-play")]
+        [Summary("Accept the game session.")]
+        public async Task AcceptSession([Remainder] string args)
+        {
+
         }
     }
 }

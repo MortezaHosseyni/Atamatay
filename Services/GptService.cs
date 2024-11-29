@@ -8,11 +8,9 @@ namespace Atamatay.Services
     {
         Task<string> Post(string worldName, string playerDetails);
     }
-    public class GptService(HttpClient httpClient) : IGptService
+    public class GptService() : IGptService
     {
         private const string Host = "https://api.openai.com/v1/chat/completions";
-
-        private readonly HttpClient _httpClient = httpClient;
 
         public async Task<string> Post(string worldName, string playerDetails)
         {
@@ -22,9 +20,9 @@ namespace Atamatay.Services
                 .Build();
             var apiKey = config["GPTToken"];
 
-            using var client = new HttpClient();
+            using var http = new HttpClient();
 
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+            http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
             var requestBody = new
             {
@@ -32,18 +30,18 @@ namespace Atamatay.Services
                 messages = new[]
                 {
                     new { role = "system", content = "You are a DM (Dungeon Master)." },
-                    new { role = "user", content = $"Lets play RPG/FRP D&D game.\nWorld name is '{worldName}'.\nPlayers: {playerDetails}\nChoose name and abilities for these races and start the story." }
+                    new { role = "user", content = $"You are the Dungeon Master for an RPG/FRP game set in the world of '{worldName}'. Players: {playerDetails}. Your task is to guide the players through the adventure. First, choose a name for each player, define their abilities, select attributes, and pick starter items based on their race. As they progress, narrate the story, provide options for the players to interact with, and roll the dice when necessary to determine the outcomes of key actions. Wait for player input, and continue the adventure based on their choices." }
                 },
                 temperature = 0.7
             };
 
-            var jsonPayload = System.Text.Json.JsonSerializer.Serialize(requestBody);
+            var jsonPayload = JsonSerializer.Serialize(requestBody);
 
             var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
             try
             {
-                var response = await client.PostAsync(Host, content);
+                var response = await http.PostAsync(Host, content);
 
                 if (response.IsSuccessStatusCode)
                 {
