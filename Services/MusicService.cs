@@ -16,7 +16,6 @@ namespace Atamatay.Services
         Task AddPlaylistAsync(SocketCommandContext context, string query);
         Task EnqueuePlaylist(SocketCommandContext context, SongModel song);
         Task StopAsync(SocketCommandContext context);
-        void SetContext(SocketCommandContext context);
     }
 
     public class MusicService(IYoutubeService youtube) : IMusicService
@@ -25,18 +24,12 @@ namespace Atamatay.Services
 
         public List<PlaylistModel>? Playlist { get; set; } = new List<PlaylistModel>();
 
-        private SocketCommandContext? _context;
-
         public async Task PlayAsync(SocketCommandContext context)
         {
             try
             {
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
-                if (channel == null)
-                {
-                    await Message.SendEmbedAsync(context, "Join to voice!", "You must be in a voice channel.", Color.Blue);
-                    return;
-                }
+                if (channel == null) { return; }
 
                 var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
                 if (playList == null)
@@ -85,7 +78,7 @@ namespace Atamatay.Services
                     playList.IsPlaying = true;
                     playList.CurrentSong = new CancellationTokenSource();
 
-                    playList.AudioClient ??= await channel.ConnectAsync();
+                    playList.AudioClient ??= await channel.ConnectAsync(true);
                     await using var discord = playList.AudioClient.CreatePCMStream(AudioApplication.Music);
                     try
                     {
@@ -114,6 +107,10 @@ namespace Atamatay.Services
                         var channelPath = $"songs/{playList.ChannelId}";
                         if (Directory.Exists(channelPath))
                             Directory.Delete(channelPath, true);
+
+                        await Task.Delay(1000);
+
+                        await OnAudioFinished(context, playList.ChannelId);
                     }
 
                     if (!playList.SkipRequested) continue;
@@ -205,7 +202,12 @@ namespace Atamatay.Services
                     Songs = new ConcurrentQueue<SongModel>(),
                     CreatedAt = DateTime.Now
                 };
-                Playlist?.Add(playList);;
+
+                var existsPlaylist = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
+                if (existsPlaylist != null)
+                    playList = existsPlaylist;
+                else
+                    Playlist?.Add(playList);
 
                 if (Validation.IsUrl(query) && query.Contains("youtube.com"))
                 {
@@ -293,17 +295,20 @@ namespace Atamatay.Services
                         return;
                     }
 
+                    var voiceChannel = context.Guild.GetVoiceChannel(channel.Id);
+                    if (voiceChannel != null)
+                        await voiceChannel.DisconnectAsync();
+
+                    var audioClient = playList.AudioClient;
+                    if (audioClient != null)
+                        await audioClient.StopAsync();
+                    playList.AudioClient = null;
+
                     playList.IsPlaying = false;
                     if (playList.CurrentSong != null)
                         await playList.CurrentSong.CancelAsync();
-
                     playList.Songs?.Clear();
-
-                    var audioClient = (context.Guild as IGuild)?.AudioClient;
-                    if (audioClient != null)
-                        await audioClient.StopAsync();
-
-                    Playlist = null;
+                    playList = null;
                 }
 
                 await Message.SendEmbedAsync(context, "STOP!", "Stopped playing and cleared the playlist.", Color.Orange, "Bot disconnected from channel.");
@@ -331,9 +336,32 @@ namespace Atamatay.Services
             });
         }
 
-        public void SetContext(SocketCommandContext context)
+        private async Task OnAudioFinished(SocketCommandContext context, ulong channelId)
         {
-            _context = context;
+            var voiceChannel = context.Guild.GetVoiceChannel(channelId);
+
+            var usersInChannel = voiceChannel?.Users
+                .Count(x => x.Id != context.Client.CurrentUser.Id);
+
+            if (usersInChannel <= 1 && voiceChannel != null)
+            {
+                await voiceChannel.DisconnectAsync();
+
+                var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channelId);
+                if (playList != null)
+                {
+                    playList.IsPlaying = false;
+                    if (playList.CurrentSong != null)
+                        await playList.CurrentSong.CancelAsync();
+
+                    playList.Songs?.Clear();
+
+                    var audioClient = (context.Guild as IGuild)?.AudioClient;
+                    if (audioClient != null)
+                        await audioClient.StopAsync();
+                    playList.AudioClient = null;
+                }
+            }
         }
         #endregion
     }
