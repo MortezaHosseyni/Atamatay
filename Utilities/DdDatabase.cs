@@ -11,22 +11,28 @@ namespace Atamatay.Utilities
         {
             _filePath = filePath;
 
+            if (!Directory.Exists("dnd"))
+                Directory.CreateDirectory("dnd");
+
             if (!File.Exists(_filePath))
-            {
                 File.WriteAllText(_filePath, "[]");
-            }
         }
 
         private List<DdSession> LoadSessions()
         {
-            var json = File.ReadAllText(_filePath);
+            string json;
+            using (var reader = new StreamReader(_filePath))
+            {
+                json = reader.ReadToEnd();
+            }
             return JsonSerializer.Deserialize<List<DdSession>>(json) ?? [];
         }
 
         private void SaveSessions(List<DdSession> sessions)
         {
             var json = JsonSerializer.Serialize(sessions, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_filePath, json);
+            using var writer = new StreamWriter(_filePath, false);
+            writer.Write(json);
         }
 
         public void AddSession(DdSession session)
@@ -82,6 +88,15 @@ namespace Atamatay.Utilities
             if (session == null) return false;
             session.Dialogs ??= [];
             session.Dialogs.Add(newDialog);
+            return UpdateSession(session);
+        }
+
+        public bool AddTimelineToSession(ulong channelId, DdTimeline newTimeline)
+        {
+            var session = GetSession(channelId);
+            if (session == null) return false;
+            session.Timelines ??= [];
+            session.Timelines.Add(newTimeline);
             return UpdateSession(session);
         }
 

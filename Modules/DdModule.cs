@@ -1,4 +1,5 @@
-﻿using Atamatay.Services;
+﻿using Atamatay.Models.DnD;
+using Atamatay.Services;
 using Atamatay.Utilities;
 using Discord;
 using Discord.Commands;
@@ -34,6 +35,7 @@ namespace Atamatay.Modules
             }
 
             var playerDetails = new List<string>();
+            var players = new List<DdPlayer>();
             var userIndex = 1;
 
             foreach (var user in mentionedUsers)
@@ -48,28 +50,39 @@ namespace Atamatay.Modules
                 var gender = arguments[userIndex + 2];
 
                 playerDetails.Add($"**{user.Username}** ({user.Mention}): Race = {race}, Gender = {gender}");
+
+                players.Add(new DdPlayer
+                {
+                    PlayerId = user.Id,
+                    Username = user.Username,
+                    Race = race,
+                    Gender = gender,
+                    CreatedAt = DateTime.Now,
+                    IsAccepted = false
+                });
+
                 userIndex += 3;
             }
 
             var pd = string.Join("\n", playerDetails);
 
-            await _dd.StartGame(Context, worldName, pd, mentionedUsers);
+            await _dd.StartGame(Context, worldName, pd, players);
         }
 
         [Command("dd-dialog")]
         [Alias("dd")]
         [Summary("Save and send player dialog.")]
-        public async Task SendDialog([Remainder] string args)
+        public async Task SendDialog([Remainder] string dialog)
         {
-
+            await _dd.SendDialog(Context, dialog);
         }
 
         [Command("dd-accept")]
         [Alias("dd-play")]
         [Summary("Accept the game session.")]
-        public async Task AcceptSession([Remainder] string args)
+        public async Task AcceptSession()
         {
-
+            await _dd.AcceptSession(Context);
         }
     }
 }

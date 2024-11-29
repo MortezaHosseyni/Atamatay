@@ -7,6 +7,7 @@
         public required string WorldName { get; set; }
 
         public required List<DdPlayer> Players { get; set; }
+        public required List<DdTimeline> Timelines { get; set; }
         public List<DdDialog>? Dialogs { get; set; }
 
         public int Round { get; set; }
