@@ -64,6 +64,21 @@ namespace Atamatay
         {
             try
             {
+                if (oldState.VoiceChannel != null)
+                {
+                    var voiceChannel = oldState.VoiceChannel;
+                    var guild = voiceChannel.Guild;
+
+                    var usersInChannel = voiceChannel.Users
+                        .Count(x => x.Id != _client.CurrentUser.Id);
+
+                    if (usersInChannel == 0)
+                    {
+                        await HandleBotKicked(guild, oldState.VoiceChannel);
+                        await voiceChannel.DisconnectAsync();
+                    }
+                }
+
                 if (user.Id == _client.CurrentUser.Id)
                 {
                     if (oldState.VoiceChannel != null && newState.VoiceChannel == null)

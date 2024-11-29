@@ -16,7 +16,7 @@ namespace Atamatay.Services
 
             var song = await _youtube.Search(context, $"{songName} by {artistName}");
 
-            _music.EnqueuePlaylist(song);
+            await _music.EnqueuePlaylist(context, song);
             await Message.SendEmbedAsync(context, "Add to playlist", $"\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}", Color.Green);
         }
     }

@@ -5,8 +5,6 @@ using Discord.Commands;
 using System.Diagnostics;
 using Atamatay.Models;
 using Atamatay.Utilities;
-using System.Timers;
-using Timer = System.Timers.Timer;
 
 namespace Atamatay.Services
 {
@@ -16,7 +14,7 @@ namespace Atamatay.Services
         Task NextAsync(SocketCommandContext context);
         Task<bool> GetPlayerStatus(SocketCommandContext context);
         Task AddPlaylistAsync(SocketCommandContext context, string query);
-        void EnqueuePlaylist(SongModel song);
+        Task EnqueuePlaylist(SocketCommandContext context, SongModel song);
         Task StopAsync(SocketCommandContext context);
         void SetContext(SocketCommandContext context);
     }
@@ -25,9 +23,8 @@ namespace Atamatay.Services
     {
         private readonly IYoutubeService _youtube = youtube;
 
-        public PlaylistModel? Playlist { get; set; }
+        public List<PlaylistModel>? Playlist { get; set; } = new List<PlaylistModel>();
 
-        private Timer? _timer;
         private SocketCommandContext? _context;
 
         public async Task PlayAsync(SocketCommandContext context)
@@ -41,31 +38,30 @@ namespace Atamatay.Services
                     return;
                 }
 
-                if (Playlist?.Songs == null || Playlist.Songs.IsEmpty)
+                var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
+                if (playList == null)
+                {
+                    await Message.SendEmbedAsync(context, "Playlist!", "Channel playlist is empty.", Color.Red);
+                    return;
+                }
+
+                if (playList.Songs == null || playList.Songs.IsEmpty)
                 {
                     await Message.SendEmbedAsync(context, channel.Name, "Channel playlist is empty.", Color.Purple);
                     return;
                 }
 
-                if (channel.Id != Playlist.ChannelId)
+                if (channel.Id != playList.ChannelId)
                 {
                     await Message.SendEmbedAsync(context, context.Channel.Name, "Please join to my voice channel.", Color.Blue);
                     return;
                 }
 
-                _timer = new Timer();
-                _timer.Interval = 300000;
-                _timer.Elapsed += async (sender, e) =>
-                {
-                    if (sender != null) await TimerElapsed(sender, e);
-                };
-                _timer.Start();
-
-                while (!Playlist.SkipRequested && Playlist.Songs.TryDequeue(out var song))
+                while (!playList.SkipRequested && playList.Songs.TryDequeue(out var song))
                 {
                     if (song == null) continue;
 
-                    if (!Playlist.IsPlaying)
+                    if (!playList.IsPlaying)
                     {
                         if (string.IsNullOrEmpty(song.Url))
                         {
@@ -82,15 +78,15 @@ namespace Atamatay.Services
                         }
                     }
 
-                    using var ffmpeg = CreateStream($"songs/{Playlist.ChannelId}/{song.Name}");
+                    using var ffmpeg = CreateStream($"songs/{playList.ChannelId}/{song.Name}");
                     await using var output = ffmpeg.StandardOutput.BaseStream;
                     await Message.SendEmbedAsync(context, "Playing...", $"{song.Title} | {song.Author} | {song.Duration}", Color.Green);
 
-                    Playlist.IsPlaying = true;
-                    Playlist.CurrentSong = new CancellationTokenSource();
+                    playList.IsPlaying = true;
+                    playList.CurrentSong = new CancellationTokenSource();
 
-                    Playlist.AudioClient ??= await channel.ConnectAsync();
-                    await using var discord = Playlist.AudioClient.CreatePCMStream(AudioApplication.Music);
+                    playList.AudioClient ??= await channel.ConnectAsync();
+                    await using var discord = playList.AudioClient.CreatePCMStream(AudioApplication.Music);
                     try
                     {
                         var buffer = new byte[81920];
@@ -98,7 +94,7 @@ namespace Atamatay.Services
 
                         while ((bytesRead = await output.ReadAsync(buffer, 0, buffer.Length)) > 0)
                         {
-                            if (Playlist.CurrentSong.Token.IsCancellationRequested)
+                            if (playList.CurrentSong.Token.IsCancellationRequested)
                             {
                                 break;
                             }
@@ -109,23 +105,23 @@ namespace Atamatay.Services
                     finally
                     {
                         await discord.FlushAsync();
-                        Playlist.IsPlaying = false;
+                        playList.IsPlaying = false;
 
                         ffmpeg.Kill();
 
                         await Task.Delay(1000);
 
-                        var channelPath = $"songs/{Playlist.ChannelId}";
+                        var channelPath = $"songs/{playList.ChannelId}";
                         if (Directory.Exists(channelPath))
                             Directory.Delete(channelPath, true);
                     }
 
-                    if (!Playlist.SkipRequested) continue;
-                    Playlist.SkipRequested = false;
+                    if (!playList.SkipRequested) continue;
+                    playList.SkipRequested = false;
                     continue;
                 }
 
-                if (!Playlist.SkipRequested && Playlist.Songs.Count == 0)
+                if (!playList.SkipRequested && playList.Songs.Count == 0)
                 {
                     await Message.SendEmbedAsync(context, "Empty playlist!", "All the songs were played.", Color.Purple);
                 }
@@ -145,24 +141,31 @@ namespace Atamatay.Services
                 return;
             }
 
-            if (Playlist?.Songs == null || Playlist.Songs.IsEmpty || Playlist.AudioClient == null)
+            var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
+            if (playList == null)
+            {
+                await Message.SendEmbedAsync(context, "Playlist!", "Channel playlist is empty.", Color.Red);
+                return;
+            }
+
+            if (playList.Songs == null || playList.Songs.IsEmpty || playList.AudioClient == null)
             {
                 await Message.SendEmbedAsync(context, channel.Name, "Channel playlist is empty.", Color.Purple);
                 return;
             }
 
-            if (!Playlist.IsPlaying)
+            if (!playList.IsPlaying)
             {
                 await Message.SendEmbedAsync(context, "Empty playlist!", "No song is currently playing", Color.Red);
                 return;
             }
 
-            Playlist.SkipRequested = true;
-            if (Playlist.CurrentSong != null)
-                await Playlist.CurrentSong.CancelAsync();
+            playList.SkipRequested = true;
+            if (playList.CurrentSong != null)
+                await playList.CurrentSong.CancelAsync();
             await Message.SendEmbedAsync(context, "NEXT!", "Skipping to next song...", Color.Green);
 
-            if (Playlist.Songs.Count == 0)
+            if (playList.Songs.Count == 0)
             {
                 await Message.SendEmbedAsync(context, "Empty playlist!", "All the songs were played.", Color.Purple);
             }
@@ -173,8 +176,15 @@ namespace Atamatay.Services
             var channel = (context.User as IGuildUser)?.VoiceChannel;
             if (channel == null) { return false; }
 
-            if (channel.Id == Playlist?.ChannelId)
-                return Playlist is { Songs: { IsEmpty: false }, AudioClient: not null, IsPlaying: true };
+            var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
+            if (playList == null)
+            {
+                await Message.SendEmbedAsync(context, "Playlist!", "Channel playlist is empty.", Color.Red);
+                return false;
+            }
+
+            if (channel.Id == playList.ChannelId)
+                return playList is { Songs: { IsEmpty: false }, AudioClient: not null, IsPlaying: true };
             return true;
         }
 
@@ -189,18 +199,19 @@ namespace Atamatay.Services
                     return;
                 }
 
-                Playlist ??= new PlaylistModel
+                var playList = new PlaylistModel
                 {
                     ChannelId = channel.Id,
                     Songs = new ConcurrentQueue<SongModel>(),
                     CreatedAt = DateTime.Now
                 };
+                Playlist?.Add(playList);;
 
                 if (Validation.IsUrl(query) && query.Contains("youtube.com"))
                 {
                     var song = await _youtube.Get(context, query, channel.Id);
 
-                    Playlist.Songs?.Enqueue(song);
+                    playList.Songs?.Enqueue(song);
                     await Message.SendEmbedAsync(context, "Add to playlist", $"\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}", Color.Green);
                 }
                 else if (Validation.IsUrl(query) && query.Contains("spotify.com"))
@@ -230,7 +241,7 @@ namespace Atamatay.Services
                 {
                     var song = await _youtube.Search(context, query);
 
-                    Playlist.Songs?.Enqueue(song);
+                    playList.Songs?.Enqueue(song);
                     await Message.SendEmbedAsync(context, "Add to playlist", $"\ud83c\udfb5 {song.Title}\n\ud83c\udfa4 {song.Author}\n\ud83d\udd54 {song.Duration}", Color.Green);
                 }
             }
@@ -241,9 +252,19 @@ namespace Atamatay.Services
             }
         }
 
-        public void EnqueuePlaylist(SongModel song)
+        public async Task EnqueuePlaylist(SocketCommandContext context, SongModel song)
         {
-            Playlist?.Songs?.Enqueue(song);
+            var channel = (context.User as IGuildUser)?.VoiceChannel;
+            if (channel == null) { return; }
+
+            var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
+            if (playList == null)
+            {
+                await Message.SendEmbedAsync(context, "Playlist!", "Channel playlist is empty.", Color.Red);
+                return;
+            }
+
+            playList.Songs?.Enqueue(song);
         }
 
         public async Task StopAsync(SocketCommandContext context)
@@ -257,19 +278,26 @@ namespace Atamatay.Services
                     return;
                 }
 
+                var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
+                if (playList == null)
+                {
+                    await Message.SendEmbedAsync(context, "Playlist!", "Channel playlist is empty.", Color.Red);
+                    return;
+                }
+
                 if (Playlist != null)
                 {
-                    if (Playlist.ChannelId != channel.Id)
+                    if (playList.ChannelId != channel.Id)
                     {
                         await Message.SendEmbedAsync(context, "Join to voice!", "Please join to my voice channel.", Color.Blue);
                         return;
                     }
 
-                    Playlist.IsPlaying = false;
-                    if (Playlist.CurrentSong != null)
-                        await Playlist.CurrentSong.CancelAsync();
+                    playList.IsPlaying = false;
+                    if (playList.CurrentSong != null)
+                        await playList.CurrentSong.CancelAsync();
 
-                    Playlist.Songs?.Clear();
+                    playList.Songs?.Clear();
 
                     var audioClient = (context.Guild as IGuild)?.AudioClient;
                     if (audioClient != null)
@@ -306,50 +334,6 @@ namespace Atamatay.Services
         public void SetContext(SocketCommandContext context)
         {
             _context = context;
-        }
-
-        private async Task TimerElapsed(object sender, ElapsedEventArgs e)
-        {
-            if (Playlist != null && _context?.Guild.GetVoiceChannel(Playlist.ChannelId) is { } voiceChannel)
-            {
-                var usersInChannel = voiceChannel.ConnectedUsers;
-                var nonBotUsers = usersInChannel.Where(user => !user.IsBot);
-
-                if (_context != null)
-                {
-                    if (Playlist is { IsPlaying: false })
-                    {
-                        await Message.SendEmbedAsync(_context, "No songs have been playing!", "No songs have been playing for the past 5 minutes", Color.Red, "Bot disconnected from channel.");
-                        Playlist.IsPlaying = false;
-                        if (Playlist.CurrentSong != null)
-                            await Playlist.CurrentSong.CancelAsync();
-
-                        Playlist.Songs?.Clear();
-
-                        var audioClient = (_context.Guild as IGuild)?.AudioClient;
-                        if (audioClient != null)
-                            await audioClient.StopAsync();
-
-                        Playlist = null;
-                    }
-
-                    if (!nonBotUsers.Any())
-                    {
-                        await Message.SendEmbedAsync(_context, "No one is listening!", "No one is listening for the past 5 minutes", Color.Red, "Bot disconnected from channel.");
-                        Playlist.IsPlaying = false;
-                        if (Playlist.CurrentSong != null)
-                            await Playlist.CurrentSong.CancelAsync();
-
-                        Playlist.Songs?.Clear();
-
-                        var audioClient = (_context.Guild as IGuild)?.AudioClient;
-                        if (audioClient != null)
-                            await audioClient.StopAsync();
-
-                        Playlist = null;
-                    }
-                }
-            }
         }
         #endregion
     }
