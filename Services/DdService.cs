@@ -136,13 +136,14 @@ namespace Atamatay.Services
                     {
                         var player = currentSession.Players.FirstOrDefault(p => p.PlayerId == ddDialog.PlayerId);
                         timeLineContent +=
-                            $"{player?.Username} ({player?.Race} {player?.Gender}) say:\n{ddDialog.Dialog}\n\n";
+                            $"{player?.Username} ({player?.Race} {player?.Gender}): {ddDialog.Dialog}\n\n";
                     }
 
                     var newTimeline = new DdTimeline
                     {
                         Role = "user",
                         Content = timeLineContent,
+                        Round = currentSession.Round,
                         CreatedAt = DateTime.Now
                     };
                     db.AddTimelineToSession(currentSession.ChannelId, newTimeline);

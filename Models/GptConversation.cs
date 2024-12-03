@@ -2,7 +2,7 @@
 {
     public class GptConversation
     {
-        public string model { get; set; } = "gpt-4o-mini";
+        public string model { get; set; } = "gpt-3.5-turbo";
 
         public required List<GptMessage> messages { get; set; }
 
