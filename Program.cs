@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Atamatay.Handlers;
+﻿using Atamatay.Handlers;
 using Atamatay.Services;
 using Discord;
 using Discord.Commands;
@@ -15,6 +14,7 @@ namespace Atamatay
         private DiscordSocketClient _client = null!;
         private CommandService _commands = null!;
         private IServiceProvider _services = null!;
+        private IMusicService _music = null!;
         private static async Task Main() => await new Program().RunBotAsync();
 
         public async Task RunBotAsync()
@@ -38,8 +38,10 @@ namespace Atamatay
                 .AddScoped<IDdService, DdService>()
                 .BuildServiceProvider();
 
+            _music = _services.GetRequiredService<IMusicService>();
+
             _client.Log += LogAsync;
-            _client.UserVoiceStateUpdated += HandleVoiceStateUpdated;
+            _client.UserVoiceStateUpdated += OnUserVoiceStateUpdatedAsync;
 
             await _client.SetActivityAsync(new Game("$help commands", ActivityType.Listening));
 
@@ -60,64 +62,14 @@ namespace Atamatay
             await Task.Delay(-1);
         }
 
-        private async Task HandleVoiceStateUpdated(SocketUser user, SocketVoiceState oldState, SocketVoiceState newState)
+        private async Task OnUserVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState beforeState, SocketVoiceState afterState)
         {
-            try
+            if (user.Id == _client.CurrentUser.Id)
             {
-                if (oldState.VoiceChannel != null)
+                if (beforeState.VoiceChannel != null && afterState.VoiceChannel == null)
                 {
-                    var voiceChannel = oldState.VoiceChannel;
-                    var guild = voiceChannel.Guild;
-
-                    var usersInChannel = voiceChannel.Users
-                        .Count(x => x.Id != _client.CurrentUser.Id);
-
-                    if (usersInChannel == 0)
-                    {
-                        await HandleBotKicked(guild, oldState.VoiceChannel);
-                        await voiceChannel.DisconnectAsync();
-                    }
+                    await _music.HandleForcedDisconnect(beforeState.VoiceChannel);
                 }
-
-                if (user.Id == _client.CurrentUser.Id)
-                {
-                    if (oldState.VoiceChannel != null && newState.VoiceChannel == null)
-                    {
-                        var guild = (oldState.VoiceChannel as SocketGuildChannel)?.Guild;
-                        if (guild != null)
-                        {
-                            await HandleBotKicked(guild, oldState.VoiceChannel);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error handling voice state update: {ex.Message}");
-            }
-        }
-
-        private static async Task HandleBotKicked(SocketGuild guild, SocketVoiceChannel channel)
-        {
-            try
-            {
-                Console.WriteLine($"Bot was kicked from {channel.Name} in {guild.Name}");
-
-                var ffmpeg = Process.GetProcessesByName("ffmpeg");
-                foreach (var process in ffmpeg)
-                {
-                    process.Kill();
-                }
-
-                await Task.Delay(1000);
-
-                var path = $"songs/{channel.Id}";
-                if (Directory.Exists(path))
-                    Directory.Delete(path, true);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error handling bot kick: {ex.Message}");
             }
         }
 

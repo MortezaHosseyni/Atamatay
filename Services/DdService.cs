@@ -16,7 +16,7 @@ namespace Atamatay.Services
     {
         private readonly IGptService _gpt = gpt;
 
-        private Dictionary<ulong, List<DdDialog>> _sessionsDialogs = new Dictionary<ulong, List<DdDialog>>();
+        private readonly Dictionary<ulong, List<DdDialog>> _sessionsDialogs = new Dictionary<ulong, List<DdDialog>>();
 
         public async Task StartGame(SocketCommandContext context, string worldName, string playerDetail, List<DdPlayer> players)
         {
@@ -104,7 +104,7 @@ namespace Atamatay.Services
                     return;
                 }
 
-                if (!_sessionsDialogs.Any(s => s.Key == currentSession.ChannelId))
+                if (_sessionsDialogs.All(s => s.Key != currentSession.ChannelId))
                 {
                     _sessionsDialogs.Add(currentSession.ChannelId, []);
                 }

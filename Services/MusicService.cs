@@ -16,6 +16,7 @@ namespace Atamatay.Services
         Task AddPlaylistAsync(SocketCommandContext context, string query);
         Task EnqueuePlaylist(SocketCommandContext context, SongModel song);
         Task StopAsync(SocketCommandContext context);
+        Task HandleForcedDisconnect(IVoiceChannel channel);
     }
 
     public class MusicService(IYoutubeService youtube) : IMusicService
@@ -24,12 +25,21 @@ namespace Atamatay.Services
 
         public List<PlaylistModel>? Playlist { get; set; } = new List<PlaylistModel>();
 
+        private readonly Dictionary<ulong, Timer> _disconnectTimers = new Dictionary<ulong, Timer>();
+        private const int DisconnectDelay = 5 * 60 * 1000;
+
         public async Task PlayAsync(SocketCommandContext context)
         {
             try
             {
                 var channel = (context.User as IGuildUser)?.VoiceChannel;
                 if (channel == null) { return; }
+
+                if (_disconnectTimers.TryGetValue(channel.Id, out var existingTimer))
+                {
+                    await existingTimer.DisposeAsync();
+                    _disconnectTimers.Remove(channel.Id);
+                }
 
                 var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
                 if (playList == null)
@@ -121,6 +131,8 @@ namespace Atamatay.Services
                 if (!playList.SkipRequested && playList.Songs.Count == 0)
                 {
                     await Message.SendEmbedAsync(context, "Empty playlist!", "All the songs were played.", Color.Purple);
+
+                    StartDisconnectTimer(context, channel, playList);
                 }
             }
             catch (Exception e)
@@ -324,6 +336,46 @@ namespace Atamatay.Services
             }
         }
 
+        public async Task HandleForcedDisconnect(IVoiceChannel channel)
+        {
+            try
+            {
+                var playList = Playlist?.FirstOrDefault(p => p.ChannelId == channel.Id);
+                if (playList == null) return;
+
+                if (playList.IsPlaying)
+                {
+                    playList.IsPlaying = false;
+                    if (playList.CurrentSong != null)
+                        await playList.CurrentSong.CancelAsync();
+                }
+
+                var audioClient = playList.AudioClient;
+                if (audioClient != null)
+                {
+                    await audioClient.StopAsync();
+                    playList.AudioClient = null;
+                }
+
+                playList.Songs?.Clear();
+
+                var ffmpeg = Process.GetProcessesByName("ffmpeg");
+                foreach (var process in ffmpeg)
+                {
+                    process.Kill();
+                }
+
+                var path = $"songs/{channel.Id}";
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+
+                Playlist?.Remove(playList);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error handling bot disconnect: {ex.Message}");
+            }
+        }
         #region Statics
         private static Process CreateStream(string path)
         {
@@ -360,6 +412,37 @@ namespace Atamatay.Services
                     if (audioClient != null)
                         await audioClient.StopAsync();
                     playList.AudioClient = null;
+                }
+            }
+        }
+
+        private void StartDisconnectTimer(SocketCommandContext context, IVoiceChannel channel, PlaylistModel playList)
+        {
+            var timer = new Timer(Callback, null, (long)DisconnectDelay, Timeout.Infinite);
+
+            _disconnectTimers[channel.Id] = timer;
+            return;
+
+            async void Callback(object? state)
+            {
+                if (playList.Songs is { IsEmpty: false }) return;
+                try
+                {
+                    if (playList.AudioClient != null)
+                    {
+                        await playList.AudioClient.StopAsync();
+                        playList.AudioClient = null;
+                    }
+
+                    await Message.SendEmbedAsync(context, "Auto Disconnect", "Bot disconnected due to 5 minutes of inactivity.", Color.Orange);
+
+                    if (!_disconnectTimers.TryGetValue(channel.Id, out var value)) return;
+                    await value.DisposeAsync();
+                    _disconnectTimers.Remove(channel.Id);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error in disconnect timer: {ex.Message}");
                 }
             }
         }
