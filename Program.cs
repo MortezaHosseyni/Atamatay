@@ -32,6 +32,7 @@ namespace Atamatay
                 .AddSingleton<CommandHandler>()
                 .AddScoped<IMusicService, MusicService>()
                 .AddScoped<IYoutubeService, YoutubeService>()
+                .AddScoped<IManagerService, ManagerService>()
                 .AddScoped<Timer>()
                 .AddScoped<HttpClient>()
                 .AddScoped<IGptService, GptService>()
