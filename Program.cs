@@ -25,13 +25,18 @@ namespace Atamatay
                 GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.MessageContent | GatewayIntents.GuildVoiceStates
             });
 
+            var config = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .Build();
+
             _commands = new CommandService();
             _services = new ServiceCollection()
                 .AddSingleton(_client)
                 .AddSingleton(_commands)
                 .AddSingleton<CommandHandler>()
                 .AddScoped<IMusicService, MusicService>()
-                .AddScoped<IYoutubeService, YoutubeService>()
+                .AddSingleton<IYoutubeService>(new YoutubeService(config["YoutubeApiKey"]!))
                 .AddScoped<IManagerService, ManagerService>()
                 .AddScoped<Timer>()
                 .AddScoped<HttpClient>()
@@ -46,16 +51,9 @@ namespace Atamatay
 
             await _client.SetActivityAsync(new Game("$help commands", ActivityType.Listening));
 
-            #region Config
-            var config = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-                .Build();
-
             var token = config["BotToken"];
             await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
-            #endregion
 
             var commandHandler = _services.GetRequiredService<CommandHandler>();
             await commandHandler.InitializeAsync();
@@ -73,7 +71,6 @@ namespace Atamatay
                 }
             }
         }
-
         private static Task LogAsync(LogMessage log)
         {
             Console.WriteLine(log);
